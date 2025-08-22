@@ -934,7 +934,8 @@ class XTelegramBot:
                 await self.telegram_bot.send_message(
                     chat_id=self.telegram_chat_id,
                     text=content[:4096],
-                    parse_mode='HTML'
+                    parse_mode='HTML',
+                    disable_web_page_preview=True  # 🔥 เพิ่มบรรทัดนี้เพื่อป้องกัน link preview card
                 )
                 logger.info("✅ Sent text message successfully")
                 
@@ -944,7 +945,8 @@ class XTelegramBot:
                 try:
                     await self.telegram_bot.send_message(
                         chat_id=self.telegram_chat_id,
-                        text=content[:4096]
+                        text=content[:4096],
+                        disable_web_page_preview=True  # 🔥 เพิ่มบรรทัดนี้ที่ fallback ด้วย
                     )
                     logger.info("✅ Sent fallback text message (no HTML)")
                 except Exception as fallback_error:
@@ -952,8 +954,7 @@ class XTelegramBot:
                     
         except Exception as e:
             logger.error(f"❌ Critical send message error: {e}")
-    
-    
+            
     async def fetch_tweets(self):
         """Fetch latest tweets - ปรับปรุงแล้ว"""
         try:
