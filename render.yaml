@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: x-telegram-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: X_BEARER_TOKEN_1
+        sync: false
+      - key: X_CONSUMER_KEY_1
+        sync: false
+      - key: X_CONSUMER_SECRET_1
+        sync: false
+      - key: X_ACCESS_TOKEN_1
+        sync: false
+      - key: X_ACCESS_TOKEN_SECRET_1
+        sync: false
+      - key: X_BEARER_TOKEN_2
+        sync: false
+      - key: X_CONSUMER_KEY_2
+        sync: false
+      - key: X_CONSUMER_SECRET_2
+        sync: false
+      - key: X_ACCESS_TOKEN_2
+        sync: false
+      - key: X_ACCESS_TOKEN_SECRET_2
+        sync: false
+      - key: X_BEARER_TOKEN_3
+        sync: false
+      - key: X_CONSUMER_KEY_3
+        sync: false
+      - key: X_CONSUMER_SECRET_3
+        sync: false
+      - key: X_ACCESS_TOKEN_3
+        sync: false
+      - key: X_ACCESS_TOKEN_SECRET_3
+        sync: false

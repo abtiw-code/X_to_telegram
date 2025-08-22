@@ -1,0 +1,9 @@
+from telethon.sync import TelegramClient
+
+api_id = 28870221
+api_hash = '045be292df36f8a080415345378929bb'
+phone = '+669457124'
+
+with TelegramClient('session_name', api_id, api_hash) as client:
+    entity = client.get_entity('https://t.me/OnchainLens')
+    print(entity.stringify())
