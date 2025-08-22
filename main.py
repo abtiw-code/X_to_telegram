@@ -387,7 +387,7 @@ class XTelegramBot:
             # เพิ่มการตรวจสอบข้อความสั้นเกินไป (เพิ่มแค่ 4 บรรทัดนี้)
             import re
             clean_text = re.sub(r'[^\w]', '', text)
-            if len(clean_text) < 10:
+            if len(clean_text) < 15:
                 return True, "too_short"
 
             # ตรวจสอบ emoji อย่างเดียว
