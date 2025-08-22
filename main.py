@@ -73,7 +73,7 @@ class XTelegramBot:
     def _setup_x_accounts(self) -> List[Dict]:
         """Setup X accounts for rotation"""
         accounts = []
-        for i in range(1, 4):
+        for i in range(1, int(os.getenv('ACC_X_TOTAL')) + 1):
             bearer_token = os.getenv(f'X_BEARER_TOKEN_{i}')
             if bearer_token:
                 accounts.append({
