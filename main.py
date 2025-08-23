@@ -886,16 +886,20 @@ class XTelegramBot:
     async def send_telegram_message(self, content: str, media_urls: List[str] = None):
         """Send message to Telegram - แก้ไขปัญหาข้อความซ้ำ"""
         try:
-            # ถ้ามี media URLs ให้ลองส่งเป็น media group ก่อน
-            if media_urls:
+            # ตรวจสอบว่ามี media URLs หรือไม่
+            if media_urls and len(media_urls) > 0:
+                logger.info(f"Processing {len(media_urls)} media URLs...")
                 media_files = []
                 
+                # ดาวน์โหลดและสร้าง media files
                 for i, url in enumerate(media_urls[:5]):  # จำกัดไม่เกิน 5 ไฟล์
-                    media_data = await self.download_media(url)
-                    if media_data:
-                        caption = content[:1024] if i == 0 else None
-                        
-                        try:
+                    try:
+                        media_data = await self.download_media(url)
+                        if media_data:
+                            # เพิ่ม caption เฉพาะไฟล์แรก
+                            caption = content[:1024] if i == 0 else None
+                            
+                            # สร้าง media object ตามประเภท
                             if any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
                                 media_files.append(InputMediaPhoto(
                                     media=media_data,
@@ -908,52 +912,71 @@ class XTelegramBot:
                                     caption=caption,
                                     parse_mode='HTML' if caption else None
                                 ))
-                        except Exception as e:
-                            logger.error(f"Media object creation error: {e}")
-                            continue
+                        
+                            logger.info(f"✅ Successfully processed media {i+1}/{len(media_urls)}")
+                        else:
+                            logger.warning(f"❌ Failed to download media {i+1}: {url}")
+                            
+                    except Exception as media_error:
+                        logger.error(f"Error processing media {url}: {media_error}")
+                        continue
                     
-                    await asyncio.sleep(2)  # หน่วงเวลาระหว่างการดาวน์โหลด
+                    # หน่วงเวลาระหว่างการดาวน์โหลด
+                    await asyncio.sleep(1)
                 
-                # 🔥 จุดสำคัญ: ถ้ามี media files สำเร็จ ให้ส่งแล้ว return ทันที
+                # ถ้ามี media files ที่ประมวลผลสำเร็จ
                 if media_files:
                     try:
                         await self.telegram_bot.send_media_group(
                             chat_id=self.telegram_chat_id,
                             media=media_files
                         )
-                        logger.info(f"✅ Sent media group with {len(media_files)} items")
-                        return  # 🔥 สำคัญมาก: return ที่นี่เพื่อไม่ให้ส่งข้อความซ้ำ
+                        logger.info(f"✅ Successfully sent media group with {len(media_files)} items")
+                        return True  # 🔥 สำคัญ: return ทันทีเมื่อส่ง media group สำเร็จ
+                        
                     except Exception as media_group_error:
-                        logger.error(f"Media group send error: {media_group_error}")
-                        # ถ้าส่ง media group ไม่สำเร็จ ให้ fallback เป็นข้อความธรรมดา
+                        logger.error(f"❌ Failed to send media group: {media_group_error}")
+                        # ถ้าส่ง media group ไม่สำเร็จ จะ fallback ไปส่งข้อความธรรมดา
+                        logger.info("📝 Falling back to text-only message...")
                 else:
-                    logger.warning("No media files successfully processed, falling back to text message")
+                    logger.warning("⚠️ No media files processed successfully, sending text-only message")
             
-            # ส่งเป็นข้อความธรรมดา (กรณีไม่มี media หรือ media group ส่งไม่สำเร็จ)
+            # ส่งข้อความธรรมดา (กรณีไม่มี media หรือ media group ส่งไม่สำเร็จ)
             try:
                 await self.telegram_bot.send_message(
                     chat_id=self.telegram_chat_id,
                     text=content[:4096],
                     parse_mode='HTML',
-                    disable_web_page_preview=True  # 🔥 เพิ่มบรรทัดนี้เพื่อป้องกัน link preview card
+                    disable_web_page_preview=True
                 )
-                logger.info("✅ Sent text message successfully")
+                logger.info("✅ Successfully sent text message")
+                return True
                 
-            except Exception as text_error:
-                logger.error(f"Text message send error: {text_error}")
-                # ลองส่งโดยไม่ใช้ HTML parsing
+            except TelegramError as telegram_error:
+                # จัดการ Telegram API errors เฉพาะ
+                logger.error(f"❌ Telegram API error: {telegram_error}")
+                
+                # ลองส่งแบบไม่ใช้ HTML parsing
                 try:
                     await self.telegram_bot.send_message(
                         chat_id=self.telegram_chat_id,
                         text=content[:4096],
-                        disable_web_page_preview=True  # 🔥 เพิ่มบรรทัดนี้ที่ fallback ด้วย
+                        disable_web_page_preview=True
                     )
-                    logger.info("✅ Sent fallback text message (no HTML)")
-                except Exception as fallback_error:
-                    logger.error(f"❌ All message send attempts failed: {fallback_error}")
+                    logger.info("✅ Successfully sent fallback text message (no HTML)")
+                    return True
                     
-        except Exception as e:
-            logger.error(f"❌ Critical send message error: {e}")
+                except Exception as final_fallback_error:
+                    logger.error(f"❌ All message send attempts failed: {final_fallback_error}")
+                    return False
+            
+            except Exception as general_error:
+                logger.error(f"❌ General error sending message: {general_error}")
+                return False
+                
+        except Exception as critical_error:
+            logger.error(f"❌ Critical error in send_telegram_message: {critical_error}")
+            return False
             
     async def fetch_tweets(self):
         """Fetch latest tweets - ปรับปรุงแล้ว"""
