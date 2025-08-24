@@ -384,19 +384,22 @@ class XTelegramBot:
         Returns: (should_skip: bool, reason: str)
         """
         try:
-            # เพิ่มการตรวจสอบข้อความสั้นเกินไป (เพิ่มแค่ 4 บรรทัดนี้)
             import re
-            clean_text = re.sub(r'[^\w]', '', text)
-            if len(clean_text) < 15:
-                return True, "too_short"
-
+            
             # ตรวจสอบ emoji อย่างเดียว
             if self.is_emoji_only_post(text):
                 return True, "emoji_only"
-        
+            
             # ตรวจสอบ link อย่างเดียว  
             if self.is_link_only_post(text):
                 return True, "link_only"
+            
+            # ตรวจสอบความยาวข้อความโดยไม่นับ link
+            text_without_links = self.remove_links_from_text(text)
+            clean_text = re.sub(r'[^\w]', '', text_without_links)
+            
+            if len(clean_text) < 15:
+                return True, "too_short_without_links"
             
             # โพสปกติ - ส่งได้
             return False, "normal"
@@ -404,6 +407,38 @@ class XTelegramBot:
         except Exception as e:
             logger.error(f"Error in should_skip_post: {e}")
             return False, "error"
+    
+    def remove_links_from_text(self, text: str) -> str:
+        """ลบ link ออกจากข้อความ แล้วคืนค่าข้อความที่เหลือ"""
+        import re
+        
+        try:
+            # URL patterns - รวมหลายรูปแบบ
+            url_patterns = [
+                r'https?://[^\s]+',           # http://... หรือ https://...
+                r'www\.[^\s]+',               # www....
+                r't\.co/[^\s]+',              # Twitter short links
+                r'bit\.ly/[^\s]+',            # Bitly links
+                r'tinyurl\.com/[^\s]+',       # TinyURL
+                r'youtu\.be/[^\s]+',          # YouTube short links
+                r'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/?[^\s]*'  # domain.com/...
+            ]
+            
+            # รวม patterns ทั้งหมด
+            combined_pattern = '|'.join(f'({pattern})' for pattern in url_patterns)
+            url_regex = re.compile(combined_pattern, re.IGNORECASE)
+            
+            # ลบ URLs ทั้งหมดออก
+            text_without_urls = url_regex.sub('', text)
+            
+            # ลบ whitespace ที่เหลือ
+            cleaned_text = re.sub(r'\s+', ' ', text_without_urls).strip()
+            
+            return cleaned_text
+            
+        except Exception as e:
+            logger.error(f"Error removing links: {e}")
+            return text
 
     async def is_self_interaction(self, tweet, client, account_id) -> tuple:
         """ตรวจสอบว่าเป็นการโต้ตอบกับตัวเองหรือไม่ - ปรับปรุงแล้ว (Self-mention Priority)"""
