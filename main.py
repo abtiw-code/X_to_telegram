@@ -533,31 +533,45 @@ class XTelegramBot:
     
     
     def format_message_by_interaction_type(self, tweet, translated_content, thai_time, tweet_url, interaction_type, target_info):
-        """จัดรูปแบบข้อความตามประเภท interaction - รองรับ mixed mentions"""
+        """จัดรูปแบบข้อความตามประเภท interaction - แก้ไขการแสดงผล truncated"""
     
-        # ✅ เพิ่มการตรวจสอบ truncated tweet ทุกประเภท
-        too_long_note = ""
-        if self.is_truncated_tweet(tweet.text):
-            too_long_note = f"\n\n🔗 <a href='{tweet_url}'>(ยาวเกิน - อ่านต่อที่ X)</a>"
+        # ✅ แก้ไข: ตรวจสอบ truncated จาก original text ของ tweet
+        original_text = getattr(tweet, 'text', '')
+        is_truncated = self.is_truncated_tweet(original_text)
         
+        # สร้างส่วนแจ้งเตือน truncated
+        truncated_note = ""
+        if is_truncated:
+            truncated_note = f"\n\n🔗 <b>ข้อความยาวเกิน</b> - <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+        
+        # จัดรูปแบบตาม interaction type
         if interaction_type == 'self_mention_pure':
-            return f"💬 <b>@{self.target_username} กล่าวถึงตัวเอง</b>\n\n{translated_content}{too_long_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+            base_message = f"💬 <b>@{self.target_username} กล่าวถึงตัวเอง</b>\n\n{translated_content}"
         
         elif interaction_type == 'self_mention_mixed':
-            return f"💬🔀 <b>@{self.target_username} กล่าวถึงตัวเองและผู้อื่น</b>\n\n{translated_content}{too_long_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+            base_message = f"💬🔀 <b>@{self.target_username} กล่าวถึงตัวเองและผู้อื่น</b>\n\n{translated_content}"
         
         elif interaction_type == 'self_retweet':
-            return f"🔄 <b>@{self.target_username} รีทวีตตัวเอง</b>\n\n{translated_content}{too_long_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+            base_message = f"🔄 <b>@{self.target_username} รีทวีตตัวเอง</b>\n\n{translated_content}"
         
         elif interaction_type == 'self_retweet_legacy':
-            return f"🔄📜 <b>@{self.target_username} รีทวีตตัวเอง (แบบเก่า)</b>\n\n{translated_content}{too_long_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+            base_message = f"🔄📜 <b>@{self.target_username} รีทวีตตัวเอง (แบบเก่า)</b>\n\n{translated_content}"
         
         elif interaction_type == 'self_reply':
-            return f"↩️ <b>@{self.target_username} ตอบตัวเอง</b>\n\n{translated_content}{too_long_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+            base_message = f"↩️ <b>@{self.target_username} ตอบตัวเอง</b>\n\n{translated_content}"
         
         else:
             # Normal tweet หรือกรณีอื่นๆ
-            return f"𝕏 @{self.target_username}\n\n{translated_content}{too_long_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+            base_message = f"𝕏 @{self.target_username}\n\n{translated_content}"
+        
+        # รวมข้อความทั้งหมด
+        full_message = f"{base_message}{truncated_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+        
+        # Log เพื่อ debug
+        if is_truncated:
+            logger.info(f"📏 Added truncation notice for tweet {tweet.id} (original length: {len(original_text)})")
+        
+        return full_message
     
     def is_reply_tweet(self, tweet) -> bool:
         """ตรวจสอบว่าเป็นโพสตอบคนอื่นหรือไม่"""
@@ -750,46 +764,72 @@ class XTelegramBot:
             logger.error(f"Save tweet error: {e}")
 
     def is_truncated_tweet(self, text: str) -> bool:
-        """ตรวจสอบว่า tweet ถูกตัดหรือไม่ - แก้ไขให้แม่นยำ"""
+        """ตรวจสอบว่า tweet ถูกตัดหรือไม่ - แก้ไขให้แม่นยำขึ้น"""
+        # ตรวจสอบสัญญาณที่ชัดเจนของการถูกตัด
         definite_truncation_signs = [
-            text.endswith("…"),
-            text.endswith("..."),
-            text.endswith("…\n"),
-            text.endswith("...\n"),
+            text.rstrip().endswith("…"),
+            text.rstrip().endswith("..."),
+            text.rstrip().endswith("…\n"),
+            text.rstrip().endswith("...\n"),
             "Show this thread" in text,
             "Show more" in text,
-            "Read more" in text
+            "Read more" in text,
+            text.rstrip().endswith("…\nhttps://t.co/"),  # Twitter ใส่ link หลัง …
+            "t.co/" in text and text.rstrip().endswith("…")  # Link + ellipsis
         ]
+        
+        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 280 ตัวอักษร)
+        suspicious_length = len(text) >= 280 and any([
+            text.rstrip().endswith("…"),
+            text.rstrip().endswith("..."),
+            not text.rstrip().endswith("."),  # ไม่จบด้วยจุด
+            not text.rstrip().endswith("!"),  # ไม่จบด้วยอัศเจรีย์
+            not text.rstrip().endswith("?")   # ไม่จบด้วยคำถาม
+        ])
     
-        return any(definite_truncation_signs)
+        result = any(definite_truncation_signs) or suspicious_length
+        
+        if result:
+            logger.info(f"🔍 Detected truncated tweet (length: {len(text)}): '{text[-50:] if len(text) > 50 else text}'")
+        
+        return result
     
     async def get_note_tweet_content(self, client: tweepy.Client, tweet_id: str, account_id: str) -> Optional[str]:
-        """ดึง full content - ปรับปรุงแล้ว"""
+        """ดึง full content - ปรับปรุงให้ handle truncated ได้ดีขึ้น"""
         try:
+            # ใช้ tweet_fields ที่ครอบคลุมมากขึ้น
             tweet = client.get_tweet(
                 id=tweet_id,
-                tweet_fields=['text', 'note_tweet', 'context_annotations'],
-                expansions=['author_id']
+                tweet_fields=['text', 'note_tweet', 'context_annotations', 'public_metrics'],
+                expansions=['author_id'],
+                user_fields=['username']
             )
             
             self.update_account_stats(account_id, True)
             
             if tweet.data:
+                # ลองดึงจาก note_tweet ก่อน (สำหรับ tweet ยาวมาก)
                 if hasattr(tweet.data, 'note_tweet') and tweet.data.note_tweet:
                     if hasattr(tweet.data.note_tweet, 'text'):
-                        logger.info(f"Found note tweet full text for {tweet_id}")
-                        return tweet.data.note_tweet.text
+                        full_text = tweet.data.note_tweet.text
+                        logger.info(f"✅ Retrieved full content from note_tweet: {len(full_text)} chars")
+                        return full_text
                 
-                if self.is_truncated_tweet(tweet.data.text):
-                    logger.info(f"Tweet {tweet_id} is truncated, but will use available text")
+                # ถ้าไม่มี note_tweet ให้ใช้ text ปกติ
+                original_text = tweet.data.text
+                
+                # แต่แจ้งเตือนถ้า text ถูกตัด
+                if self.is_truncated_tweet(original_text):
+                    logger.warning(f"⚠️ Tweet {tweet_id} appears truncated but no note_tweet available")
+                    logger.info(f"📝 Using truncated text: {len(original_text)} chars")
+                
+                return original_text
             
-                return tweet.data.text
-        
             return None
             
         except tweepy.TooManyRequests:
             self.update_account_stats(account_id, False, rate_limited=True)
-            logger.warning(f"Rate limited when getting full content for {tweet_id}")
+            logger.warning(f"Rate limited when getting content for {tweet_id}")
             return None
         except Exception as e:
             logger.error(f"Get note tweet error for {tweet_id}: {e}")
@@ -1174,7 +1214,7 @@ class XTelegramBot:
             self._is_fetching = False
     
     async def process_tweet(self, tweet, includes=None, account_id=None) -> bool:
-        """Process individual tweet - ปรับปรุงให้รองรับ interaction types ใหม่"""
+        """Process individual tweet - แก้ไขการจัดการ truncated content"""
         try:
             if tweet.id in self.processed_tweets:
                 logger.info(f"⏭️ Tweet {tweet.id} already processed, skipping")
@@ -1187,48 +1227,51 @@ class XTelegramBot:
             self.mark_processing(tweet.id)
         
             try:
-                original_content = tweet.text
-                content = original_content
-                was_expanded = False  
-            
-                logger.info(f"Processing tweet {tweet.id}, original length: {len(content)}")
+                # เก็บ original text ไว้สำหรับตรวจสอบ truncation
+                original_text = tweet.text
+                content = original_text
+                was_expanded = False
                 
-                # ตรวจสอบ interaction type ด้วย logic ใหม่
+                logger.info(f"📝 Processing tweet {tweet.id}")
+                logger.info(f"   Original length: {len(original_text)} chars")
+                logger.info(f"   Is truncated: {self.is_truncated_tweet(original_text)}")
+                
+                # ตรวจสอบ interaction type
                 account_info = self.get_best_available_account()
                 temp_account = account_info['account']
                 temp_client = self.create_x_client(temp_account)
                 
                 is_self, interaction_type, target = await self.is_self_interaction(tweet, temp_client, account_id)
-                
                 logger.info(f"Tweet {tweet.id}: is_self={is_self}, type={interaction_type}, target={target}")
                 
-                # ขยายเนื้อหาถ้าจำเป็น (เหมือนเดิม)
+                # พยายามขยายเนื้อหาถ้าจำเป็น
                 if hasattr(tweet, 'note_tweet') and tweet.note_tweet:
                     if hasattr(tweet.note_tweet, 'text'):
                         content = tweet.note_tweet.text
-                        was_expanded = True  
-                        logger.info(f"✅ Used note_tweet full text for {tweet.id}: {len(content)} chars")
+                        was_expanded = True
+                        logger.info(f"✅ Used note_tweet: {len(content)} chars")
                 
-                elif self.is_truncated_tweet(content):
-                    logger.info(f"🔍 Tweet {tweet.id} appears truncated, trying to get full content...")
+                elif self.is_truncated_tweet(original_text):
+                    logger.info(f"🔍 Tweet appears truncated, attempting to get full content...")
+                    
                     account_info = self.get_best_available_account()
                     account = account_info['account']
                     client = self.create_x_client(account)
-                
+                    
                     full_content = await self.get_note_tweet_content(client, tweet.id, account_id)
-                
-                    if full_content and len(full_content) > len(content):
+                    
+                    if full_content and len(full_content) > len(original_text):
                         content = full_content
-                        was_expanded = True  
-                        logger.info(f"✅ Retrieved full content: {len(content)} chars (was {len(original_content)})")
+                        was_expanded = True
+                        logger.info(f"✅ Retrieved expanded content: {len(content)} chars (was {len(original_text)})")
                     else:
-                        logger.info(f"ℹ️ Using available text for tweet {tweet.id} ({len(content)} chars)")
+                        logger.info(f"ℹ️ Could not expand content, using original: {len(original_text)} chars")
                 else:
-                    logger.info(f"✅ Tweet {tweet.id} appears complete: {len(content)} chars")
+                    logger.info(f"✅ Content appears complete: {len(content)} chars")
                 
                 tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
-            
-                # จัดการ media (เหมือนเดิม)
+                
+                # จัดการ media (ไม่เปลี่ยน)
                 media_urls = []
                 if includes and 'media' in includes and hasattr(tweet, 'attachments') and tweet.attachments:
                     if 'media_keys' in tweet.attachments:
@@ -1245,27 +1288,26 @@ class XTelegramBot:
                 if content_hash in self.processed_content_hashes:
                     logger.info(f"Skipping duplicate content for tweet {tweet.id}")
                     return False
-
+    
+                # ตรวจสอบ content filter
                 should_skip, skip_reason = self.should_skip_post(content)
                 if should_skip:
                     logger.info(f"🚫 Skipping tweet {tweet.id} - Reason: {skip_reason}")
-                    logger.info(f"📝 Content preview: '{content[:100]}...'")
-    
-                    # บันทึกลงฐานข้อมูลว่าเราประมวลผลแล้ว (เพื่อไม่ให้เช็คซ้ำ) แต่ไม่ส่ง Telegram
+                    
                     self.save_processed_tweet(
                         tweet.id, content, f"[SKIPPED-{skip_reason.upper()}] {content[:100]}", 
                         tweet.created_at, tweet_url, account_id, content_hash, 
                         tweet.conversation_id, False
                     )
-                    return True  # return True เพราะประมวลผลเสร็จแล้ว (แค่ไม่ส่ง)
+                    return True
                 
-                logger.info(f"✅ Tweet {tweet.id} passed content filter, proceeding to translate and send")
+                logger.info(f"✅ Tweet {tweet.id} passed all filters, proceeding...")
                 
                 # แปลภาษา
                 translated = await self.translate_text(content)
                 thai_time = self.get_thai_time(tweet.created_at)
                 
-                # จัดรูปแบบข้อความตาม interaction type ใหม่
+                # ✅ แก้ไขหลัก: ส่ง original tweet object ไปด้วยเพื่อตรวจสอบ truncation
                 message = self.format_message_by_interaction_type(
                     tweet, translated, thai_time, tweet_url, interaction_type, target
                 )
@@ -1279,12 +1321,21 @@ class XTelegramBot:
                     tweet_url, account_id, content_hash, tweet.conversation_id, False
                 )
     
-                logger.info(f"✅ Processed {interaction_type} tweet {tweet.id}")
+                logger.info(f"✅ Successfully processed {interaction_type} tweet {tweet.id}")
+                
+                # Log สรุป
+                if was_expanded:
+                    logger.info(f"📈 Content expanded: {len(original_text)} → {len(content)} chars")
+                elif self.is_truncated_tweet(original_text):
+                    logger.info(f"⚠️ Content remains truncated: {len(content)} chars (notice added)")
+                
                 return True
+                
             finally:
                 self.unmark_processing(tweet.id)
+                
         except Exception as e:
-            logger.error(f"Process tweet error: {e}")
+            logger.error(f"❌ Process tweet error for {tweet.id}: {e}")
             self.unmark_processing(tweet.id)
             return False
     
