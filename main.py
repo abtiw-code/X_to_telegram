@@ -52,6 +52,13 @@ class XTelegramBot:
         self._init_account_stats()
         self.startup_file = '/tmp/bot_startup_time.txt'
         self.is_genuine_startup = self._check_genuine_startup()
+        self.sent_message_hashes = set()
+        self.max_sent_cache = 100
+
+    def generate_message_hash(self, content: str, media_urls: List[str] = None, tweet_id: str = None) -> str:
+        """สร้าง hash สำหรับตรวจสอบข้อความซ้ำ"""
+        hash_content = f"{tweet_id}|{content[:100]}|{len(media_urls) if media_urls else 0}"
+        return hashlib.md5(hash_content.encode()).hexdigest()
 
     def is_already_processing(self, tweet_id: str) -> bool:
         """ตรวจสอบว่า tweet นี้กำลังถูกประมวลผลอยู่หรือไม่"""
@@ -378,7 +385,7 @@ class XTelegramBot:
             logger.error(f"Error checking link-only post: {e}")
             return False
     
-    def should_skip_post(self, text: str) -> tuple:
+    def should_skip_post(self, text: str, media_urls: List[str] = None) -> tuple:
         """
         ตรวจสอบว่าควรข้ามโพสนี้หรือไม่
         Returns: (should_skip: bool, reason: str)
@@ -393,7 +400,15 @@ class XTelegramBot:
             # ตรวจสอบ link อย่างเดียว  
             if self.is_link_only_post(text):
                 return True, "link_only"
+
+            # ตรวจสอบโพสสั้น + emoji + link
+            text_clean = re.sub(r'https?://[^\s]+|www\.[^\s]+|t\.co/[^\s]+', '', text)  # ลบ link
+            text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)  # ลบ emoji
+            text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)  # เก็บแค่ตัวอักษรและไทย
             
+            if len(text_clean) < 15:
+                return True, "short_content_with_link_emoji"
+    
             # ตรวจสอบความยาวข้อความโดยไม่นับ link
             text_without_links = self.remove_links_from_text(text)
             clean_text = re.sub(r'[^\w]', '', text_without_links)
@@ -900,7 +915,7 @@ class XTelegramBot:
                     {'role': 'user', 'content': text}
                 ],
                 'max_tokens': 2000,
-                'temperature': 0.3
+                'temperature': 0.1
             }
             
             timeout = aiohttp.ClientTimeout(total=60)
@@ -958,23 +973,33 @@ class XTelegramBot:
         
         return None
     
-    async def send_telegram_message(self, content: str, media_urls: List[str] = None):
-        """Send message to Telegram - แก้ไขปัญหาข้อความซ้ำ"""
+    async def send_telegram_message(self, content: str, media_urls: List[str] = None, tweet_id: str = None):
+        """Send message to Telegram - ป้องกันข้อความซ้ำ 100%"""
         try:
-            # ตรวจสอบว่ามี media URLs หรือไม่
+            # ตรวจสอบข้อความซ้ำก่อนส่ง
+            message_hash = self.generate_message_hash(content, media_urls, tweet_id)
+            
+            if message_hash in self.sent_message_hashes:
+                logger.warning(f"Duplicate message detected for tweet {tweet_id}, skipping send")
+                return True
+            
+            # จำกัดขนาด cache
+            if len(self.sent_message_hashes) > self.max_sent_cache:
+                self.sent_message_hashes = set(list(self.sent_message_hashes)[-50:])
+            
+            success = False
+            
+            # ถ้ามี media
             if media_urls and len(media_urls) > 0:
-                logger.info(f"Processing {len(media_urls)} media URLs...")
+                logger.info(f"Processing {len(media_urls)} media URLs for tweet {tweet_id}")
                 media_files = []
                 
-                # ดาวน์โหลดและสร้าง media files
-                for i, url in enumerate(media_urls[:5]):  # จำกัดไม่เกิน 5 ไฟล์
+                for i, url in enumerate(media_urls[:5]):
                     try:
                         media_data = await self.download_media(url)
                         if media_data:
-                            # เพิ่ม caption เฉพาะไฟล์แรก
                             caption = content[:1024] if i == 0 else None
                             
-                            # สร้าง media object ตามประเภท
                             if any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
                                 media_files.append(InputMediaPhoto(
                                     media=media_data,
@@ -987,70 +1012,71 @@ class XTelegramBot:
                                     caption=caption,
                                     parse_mode='HTML' if caption else None
                                 ))
-                        
-                            logger.info(f"✅ Successfully processed media {i+1}/{len(media_urls)}")
-                        else:
-                            logger.warning(f"❌ Failed to download media {i+1}: {url}")
                             
+                            logger.info(f"Successfully processed media {i+1}/{len(media_urls)}")
+                        
                     except Exception as media_error:
                         logger.error(f"Error processing media {url}: {media_error}")
                         continue
                     
-                    # หน่วงเวลาระหว่างการดาวน์โหลด
                     await asyncio.sleep(1)
                 
-                # ถ้ามี media files ที่ประมวลผลสำเร็จ
+                # ส่ง media group ถ้ามีไฟล์
                 if media_files:
                     try:
                         await self.telegram_bot.send_media_group(
                             chat_id=self.telegram_chat_id,
                             media=media_files
                         )
-                        logger.info(f"✅ Successfully sent media group with {len(media_files)} items")
-                        return True  # 🔥 สำคัญ: return ทันทีเมื่อส่ง media group สำเร็จ
+                        logger.info(f"Successfully sent media group with {len(media_files)} items for tweet {tweet_id}")
+                        success = True
+                        # เพิ่ม hash เมื่อส่งสำเร็จ
+                        self.sent_message_hashes.add(message_hash)
+                        return True  # return ทันที
                         
                     except Exception as media_group_error:
-                        logger.error(f"❌ Failed to send media group: {media_group_error}")
-                        # ถ้าส่ง media group ไม่สำเร็จ จะ fallback ไปส่งข้อความธรรมดา
-                        logger.info("📝 Falling back to text-only message...")
-                else:
-                    logger.warning("⚠️ No media files processed successfully, sending text-only message")
+                        logger.error(f"Failed to send media group: {media_group_error}")
             
-            # ส่งข้อความธรรมดา (กรณีไม่มี media หรือ media group ส่งไม่สำเร็จ)
-            try:
-                await self.telegram_bot.send_message(
-                    chat_id=self.telegram_chat_id,
-                    text=content[:4096],
-                    parse_mode='HTML',
-                    disable_web_page_preview=True
-                )
-                logger.info("✅ Successfully sent text message")
-                return True
-                
-            except TelegramError as telegram_error:
-                # จัดการ Telegram API errors เฉพาะ
-                logger.error(f"❌ Telegram API error: {telegram_error}")
-                
-                # ลองส่งแบบไม่ใช้ HTML parsing
+            # ส่งข้อความธรรมดา (เฉพาะเมื่อไม่มี media หรือ media ส่งไม่สำเร็จ)
+            if not success:
                 try:
                     await self.telegram_bot.send_message(
                         chat_id=self.telegram_chat_id,
                         text=content[:4096],
+                        parse_mode='HTML',
                         disable_web_page_preview=True
                     )
-                    logger.info("✅ Successfully sent fallback text message (no HTML)")
-                    return True
+                    logger.info(f"Successfully sent text message for tweet {tweet_id}")
+                    success = True
                     
-                except Exception as final_fallback_error:
-                    logger.error(f"❌ All message send attempts failed: {final_fallback_error}")
+                except TelegramError as telegram_error:
+                    logger.error(f"Telegram API error: {telegram_error}")
+                
+                    try:
+                        await self.telegram_bot.send_message(
+                            chat_id=self.telegram_chat_id,
+                            text=content[:4096],
+                            disable_web_page_preview=True
+                        )
+                        logger.info(f"Successfully sent fallback text message for tweet {tweet_id}")
+                        success = True
+                        
+                    except Exception as final_error:
+                        logger.error(f"All message send attempts failed: {final_error}")
+                        return False
+                
+                except Exception as general_error:
+                    logger.error(f"General error sending message: {general_error}")
                     return False
             
-            except Exception as general_error:
-                logger.error(f"❌ General error sending message: {general_error}")
-                return False
-                
+            # เพิ่ม hash เมื่อส่งสำเร็จ
+            if success:
+                self.sent_message_hashes.add(message_hash)
+        
+            return success
+            
         except Exception as critical_error:
-            logger.error(f"❌ Critical error in send_telegram_message: {critical_error}")
+            logger.error(f"Critical error in send_telegram_message: {critical_error}")
             return False
             
     async def fetch_tweets(self):
@@ -1290,7 +1316,7 @@ class XTelegramBot:
                     return False
     
                 # ตรวจสอบ content filter
-                should_skip, skip_reason = self.should_skip_post(content)
+                should_skip, skip_reason = self.should_skip_post(content, media_urls)
                 if should_skip:
                     logger.info(f"🚫 Skipping tweet {tweet.id} - Reason: {skip_reason}")
                     
@@ -1313,7 +1339,7 @@ class XTelegramBot:
                 )
     
                 # ส่งข้อความ
-                await self.send_telegram_message(message, media_urls)
+                await self.send_telegram_message(message, media_urls, tweet.id)
             
                 # บันทึกลงฐานข้อมูล
                 self.save_processed_tweet(
@@ -1385,7 +1411,11 @@ class XTelegramBot:
             if len(self.processed_content_hashes) > 2000:
                 sorted_hashes = sorted(self.processed_content_hashes)
                 self.processed_content_hashes = set(sorted_hashes[-1000:])
-                
+
+            if len(self.sent_message_hashes) > self.max_sent_cache:
+                self.sent_message_hashes = set(list(self.sent_message_hashes)[-50:])
+                logger.info("Cleaned sent message hashes cache")
+            
             logger.info("Memory cleanup completed")
         
         except Exception as e:
