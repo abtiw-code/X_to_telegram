@@ -392,7 +392,13 @@ class XTelegramBot:
         """
         try:
             import re
-            
+
+            if "cryptoquant.com" in text.lower():
+                return True, "cryptoquant_link"
+                
+            if "arkm.com" in text.lower():
+                return True, "arkm_link"
+                
             # ตรวจสอบ emoji อย่างเดียว
             if self.is_emoji_only_post(text):
                 return True, "emoji_only"
