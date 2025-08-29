@@ -398,6 +398,12 @@ class XTelegramBot:
                 
             if "arkm.com" in text.lower():
                 return True, "arkm_link"
+
+            if "blofin.com" in text.lower():
+                return True, "blofin_link"
+
+            if "whop.com" in text.lower():
+                return True, "whop_link"
                 
             # ตรวจสอบ emoji อย่างเดียว
             if self.is_emoji_only_post(text):
@@ -412,14 +418,14 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)  # ลบ emoji
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)  # เก็บแค่ตัวอักษรและไทย
             
-            if len(text_clean) < 15:
+            if len(text_clean) < 20:
                 return True, "short_content_with_link_emoji"
     
             # ตรวจสอบความยาวข้อความโดยไม่นับ link
             text_without_links = self.remove_links_from_text(text)
             clean_text = re.sub(r'[^\w]', '', text_without_links)
             
-            if len(clean_text) < 15:
+            if len(clean_text) < 20:
                 return True, "too_short_without_links"
             
             # โพสปกติ - ส่งได้
