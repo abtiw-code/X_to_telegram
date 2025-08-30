@@ -591,13 +591,16 @@ class XTelegramBot:
             # Normal tweet หรือกรณีอื่นๆ
             base_message = f"𝕏 @{self.target_username}\n\n{translated_content}"
         
-        # รวมข้อความทั้งหมด
-        full_message = f"{base_message}{truncated_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
-        
+        # รวมข้อความทั้งหมด - ใช้ลิงก์เดียว
+        if is_truncated:
+            full_message = f"{base_message}{truncated_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+        else:
+            full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
+    
         # Log เพื่อ debug
         if is_truncated:
             logger.info(f"📏 Added truncation notice for tweet {tweet.id} (original length: {len(original_text)})")
-        
+    
         return full_message
     
     def is_reply_tweet(self, tweet) -> bool:
