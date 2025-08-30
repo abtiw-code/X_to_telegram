@@ -393,17 +393,17 @@ class XTelegramBot:
         try:
             import re
 
-            if "cryptoquant.com" in text.lower():
-                return True, "cryptoquant_link"
-                
-            if "arkm.com" in text.lower():
-                return True, "arkm_link"
-
-            if "blofin.com" in text.lower():
-                return True, "blofin_link"
-
-            if "whop.com" in text.lower():
-                return True, "whop_link"
+            # เพิ่มการตรวจสอบที่เข้มงวดขึ้น
+            blocked_keywords = [
+                "cryptoquant", "arkm.com", "blofin.com", "whop.com"
+            ]
+            
+            text_lower = text.lower()
+        
+            # ตรวจสอบทุก keyword
+            for keyword in blocked_keywords:
+                if keyword in text_lower:
+                    return True, f"blocked_{keyword.replace('.', '_')}"
                 
             # ตรวจสอบ emoji อย่างเดียว
             if self.is_emoji_only_post(text):
@@ -1230,7 +1230,10 @@ class XTelegramBot:
                 sorted_tweets = sorted(filtered_tweets, key=lambda x: (x.created_at, int(x.id)))
     
                 logger.info(f"📝 Processing {len(sorted_tweets)} tweets individually")
-    
+
+                final_tweets = []
+                blocked_domains = ["cryptoquant", "arkm", "blofin", "whop"]
+        
                 for tweet in sorted_tweets:
                     logger.info(f"📝 Processing individual tweet: {tweet.id}")
                     success = await self.process_tweet(tweet, tweets.includes, account['id'])
