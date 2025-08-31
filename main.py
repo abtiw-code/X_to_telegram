@@ -395,11 +395,26 @@ class XTelegramBot:
 
             # เพิ่มการตรวจสอบที่เข้มงวดขึ้น
             blocked_keywords = [
-                "cryptoquant", "arkm.com", "blofin.com", "whop.com"
+                "cryptoquant.com", "arkm.com", "blofin.com", "whop.com"
             ]
             
             text_lower = text.lower()
+
+            # ตรวจสอบ URL patterns ที่เฉพาะเจาะจง
+            blocked_url_patterns = [
+                r'whop\.com[/\w\-]*',
+                r'cryptoquant\.com[/\w\-]*', 
+                r'arkm\.com[/\w\-]*',
+                r'blofin\.com[/\w\-]*'
+            ]
         
+            for pattern in blocked_url_patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    match = re.search(pattern, text_lower, re.IGNORECASE)
+                    matched_text = match.group(0) if match else pattern
+                    logger.warning(f"🚫 BLOCKED: Found URL pattern '{matched_text}'")
+                    return True, f"blocked_url_{pattern.split('.')[0]}"
+                    
             # ตรวจสอบทุก keyword
             for keyword in blocked_keywords:
                 if keyword in text_lower:
