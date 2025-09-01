@@ -402,10 +402,10 @@ class XTelegramBot:
 
             # ตรวจสอบ URL patterns ที่เฉพาะเจาะจง
             blocked_url_patterns = [
-                r'whop\.com[/\w\-]*',
-                r'cryptoquant\.com[/\w\-]*', 
-                r'arkm\.com[/\w\-]*',
-                r'blofin\.com[/\w\-]*'
+                r'(?:[\w-]+\.)?whop\.com[/\w\-]*',
+                r'(?:[\w-]+\.)?cryptoquant\.com[/\w\-]*', 
+                r'(?:[\w-]+\.)?arkm\.com[/\w\-]*',
+                r'(?:[\w-]+\.)?blofin\.com[/\w\-]*'
             ]
         
             for pattern in blocked_url_patterns:
@@ -433,14 +433,14 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)  # ลบ emoji
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)  # เก็บแค่ตัวอักษรและไทย
             
-            if len(text_clean) < 20:
+            if len(text_clean) < 15:
                 return True, "short_content_with_link_emoji"
     
             # ตรวจสอบความยาวข้อความโดยไม่นับ link
             text_without_links = self.remove_links_from_text(text)
             clean_text = re.sub(r'[^\w]', '', text_without_links)
             
-            if len(clean_text) < 20:
+            if len(clean_text) < 15:
                 return True, "too_short_without_links"
             
             # โพสปกติ - ส่งได้
