@@ -64,18 +64,18 @@ class XTelegramBot:
         """ตรวจสอบว่า tweet นี้กำลังถูกประมวลผลอยู่หรือไม่"""
         return hasattr(self, '_processing_tweets') and tweet_id in getattr(self, '_processing_tweets', set())
 
-    def mark_processing(self, tweet_id: str):
+    def m_processing(self, tweet_id: str):
         """ทำเครื่องหมายว่า tweet นี้กำลังถูกประมวลผล"""
         if not hasattr(self, '_processing_tweets'):
             self._processing_tweets = set()
         self._processing_tweets.add(tweet_id)
-        logger.info(f"🔄 Marked tweet {tweet_id} as processing")
+        logger.info(f"🔄 Med tweet {tweet_id} as processing")
     
-    def unmark_processing(self, tweet_id: str):
+    def unm_processing(self, tweet_id: str):
         """ยกเลิกเครื่องหมายการประมวลผล"""
         if hasattr(self, '_processing_tweets'):
             self._processing_tweets.discard(tweet_id)
-            logger.info(f"✅ Unmarked tweet {tweet_id} from processing")
+            logger.info(f"✅ Unmed tweet {tweet_id} from processing")
     
     def _setup_x_accounts(self) -> List[Dict]:
         """Setup X accounts for rotation"""
@@ -387,39 +387,80 @@ class XTelegramBot:
     
     def should_skip_post(self, text: str, media_urls: List[str] = None) -> tuple:
         """
-        ตรวจสอบว่าควรข้ามโพสนี้หรือไม่
+        ตรวจสอบว่าควรข้ามโพสนี้หรือไม่ - แก้ไขให้จับ URL ได้แม่นยำขึ้น
         Returns: (should_skip: bool, reason: str)
         """
         try:
             import re
-
+    
             # เพิ่มการตรวจสอบที่เข้มงวดขึ้น
             blocked_keywords = [
-                "cryptoquant.com", "arkm.com", "blofin.com", "whop.com"
+                "cryptoquant.com", "arkm.com", "blofin.com", "whop.com",
+                "auth.arkm.com"  # เพิ่ม subdomain ที่เจอ
             ]
             
             text_lower = text.lower()
-
-            # ตรวจสอบ URL patterns ที่เฉพาะเจาะจง
+    
+            # ✅ แก้ไขหลัก: ปรับปรุง URL patterns ให้จับได้ครอบคลุมมากขึ้น
             blocked_url_patterns = [
-                r'(?:[\w-]+\.)?whop\.com[/\w\-]*',
-                r'(?:[\w-]+\.)?cryptoquant\.com[/\w\-]*', 
-                r'(?:[\w-]+\.)?arkm\.com[/\w\-]*',
-                r'(?:[\w-]+\.)?blofin\.com[/\w\-]*'
+                # Whop.com patterns - จับทุกรูปแบบ
+                r'(?:https?://)?(?:www\.)?whop\.com(?:/[\w\-\.%/?#&=]*)?',
+                r'(?:https?://)?[\w\-]+\.whop\.com(?:/[\w\-\.%/?#&=]*)?',
+                
+                # CryptoQuant patterns
+                r'(?:https?://)?(?:www\.)?cryptoquant\.com(?:/[\w\-\.%/?#&=]*)?',
+                r'(?:https?://)?[\w\-]+\.cryptoquant\.com(?:/[\w\-\.%/?#&=]*)?',
+                
+                # Arkm patterns - รวมทั้ง auth.arkm.com
+                r'(?:https?://)?(?:www\.)?arkm\.com(?:/[\w\-\.%/?#&=]*)?',
+                r'(?:https?://)?(?:auth\.)?arkm\.com(?:/[\w\-\.%/?#&=]*)?',
+                r'(?:https?://)?[\w\-]+\.arkm\.com(?:/[\w\-\.%/?#&=]*)?',
+                
+                # Blofin patterns
+                r'(?:https?://)?(?:www\.)?blofin\.com(?:/[\w\-\.%/?#&=]*)?',
+                r'(?:https?://)?[\w\-]+\.blofin\.com(?:/[\w\-\.%/?#&=]*)?',
             ]
-        
+            
+            # ตรวจสอบ URL patterns ที่เฉพาะเจาะจง
             for pattern in blocked_url_patterns:
-                if re.search(pattern, text_lower, re.IGNORECASE):
-                    match = re.search(pattern, text_lower, re.IGNORECASE)
-                    matched_text = match.group(0) if match else pattern
-                    logger.warning(f"🚫 BLOCKED: Found URL pattern '{matched_text}'")
-                    return True, f"blocked_url_{pattern.split('.')[0]}"
+                matches = re.findall(pattern, text_lower, re.IGNORECASE)
+                if matches:
+                    matched_url = matches[0] if matches else pattern
+                    logger.warning(f"🚫 BLOCKED: Found URL pattern '{matched_url}' in text: '{text[:100]}...'")
                     
-            # ตรวจสอบทุก keyword
+                    # ระบุ domain ที่ถูกบล็อก
+                    if 'whop.com' in matched_url:
+                        return True, "blocked_whop_com"
+                    elif 'cryptoquant.com' in matched_url:
+                        return True, "blocked_cryptoquant_com"
+                    elif 'arkm.com' in matched_url:
+                        return True, "blocked_arkm_com"
+                    elif 'blofin.com' in matched_url:
+                        return True, "blocked_blofin_com"
+                    else:
+                        return True, "blocked_url_pattern"
+                        
+            # ✅ เพิ่มการตรวจสอบ keyword แบบเข้มงวด
             for keyword in blocked_keywords:
                 if keyword in text_lower:
-                    return True, f"blocked_{keyword.replace('.', '_')}"
-                
+                    logger.warning(f"🚫 BLOCKED: Found keyword '{keyword}' in text: '{text[:100]}...'")
+                    return True, f"blocked_{keyword.replace('.', '_').replace('/', '_')}"
+            
+            # ✅ เพิ่มการตรวจสอบ URL shortener ที่อาจซ่อน blocked domains
+            shortener_patterns = [
+                r't\.co/[\w]+',
+                r'bit\.ly/[\w]+', 
+                r'tinyurl\.com/[\w]+',
+                r'short\.link/[\w]+',
+                r'cutt\.ly/[\w]+'
+            ]
+            
+            # แจ้งเตือนถ้าเจอ URL shortener (อาจต้องตรวจสอบเพิ่มเติม)
+            for pattern in shortener_patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    logger.info(f"⚠️ Found URL shortener in tweet, monitoring: {re.findall(pattern, text_lower)}")
+                    # ไม่บล็อกทันที แต่ log ไว้สังเกต
+            
             # ตรวจสอบ emoji อย่างเดียว
             if self.is_emoji_only_post(text):
                 return True, "emoji_only"
@@ -427,7 +468,7 @@ class XTelegramBot:
             # ตรวจสอบ link อย่างเดียว  
             if self.is_link_only_post(text):
                 return True, "link_only"
-
+    
             # ตรวจสอบโพสสั้น + emoji + link
             text_clean = re.sub(r'https?://[^\s]+|www\.[^\s]+|t\.co/[^\s]+', '', text)  # ลบ link
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)  # ลบ emoji
@@ -449,6 +490,47 @@ class XTelegramBot:
         except Exception as e:
             logger.error(f"Error in should_skip_post: {e}")
             return False, "error"
+    
+    def test_url_blocking(self):
+        """ฟังก์ชันทดสอบการบล็อก URL - เรียกใช้เพื่อ debug"""
+        test_cases = [
+            "Check out this tool at https://whop.com/alicharts/",
+            "Visit auth.arkm.com/register for more info",
+            "New analysis on cryptoquant.com/insights",
+            "Get signals at https://blofin.com/trading",
+            "This is a normal tweet without blocked URLs",
+            "Short link: https://t.co/abc123def (might be blocked site)",
+        ]
+        
+        print("\n=== URL Blocking Test ===")
+        for i, text in enumerate(test_cases, 1):
+            should_skip, reason = self.should_skip_post(text)
+            status = "🚫 BLOCKED" if should_skip else "✅ ALLOWED"
+            print(f"{i}. {status} - {reason}")
+            print(f"   Text: {text}")
+            print()
+    
+    # ✅ เพิ่มฟังก์ชันช่วยตรวจสอบ URL ที่ซับซ้อนขึ้น
+    def extract_all_urls(self, text: str) -> List[str]:
+        """ดึง URL ทั้งหมดจากข้อความ รวมทั้ง URL ที่ไม่มี http://"""
+        import re
+        
+        url_patterns = [
+            r'https?://[^\s]+',                    # http:// หรือ https://
+            r'www\.[^\s]+',                        # www.example.com
+            r't\.co/[^\s]+',                       # Twitter short links
+            r'bit\.ly/[^\s]+',                     # Bitly
+            r'[a-zA-Z0-9.-]+\.com(?:/[^\s]*)?',    # domain.com/path
+            r'[a-zA-Z0-9.-]+\.co(?:/[^\s]*)?',     # domain.co/path
+            r'[a-zA-Z0-9.-]+\.io(?:/[^\s]*)?',     # domain.io/path
+        ]
+    
+        all_urls = []
+        for pattern in url_patterns:
+            urls = re.findall(pattern, text, re.IGNORECASE)
+            all_urls.extend(urls)
+        
+        return list(set(all_urls))  # ลบ duplicate
     
     def remove_links_from_text(self, text: str) -> str:
         """ลบ link ออกจากข้อความ แล้วคืนค่าข้อความที่เหลือ"""
