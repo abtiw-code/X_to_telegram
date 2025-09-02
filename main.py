@@ -1365,7 +1365,7 @@ class XTelegramBot:
                 logger.info(f"⏳ Tweet {tweet.id} is currently being processed, skipping")
                 return False
         
-            self.mark_processing(tweet.id)
+            self.m_processing(tweet.id)
         
             try:
                 # เก็บ original text ไว้สำหรับตรวจสอบ truncation
@@ -1473,11 +1473,11 @@ class XTelegramBot:
                 return True
                 
             finally:
-                self.unmark_processing(tweet.id)
+                self.unm_processing(tweet.id)
                 
         except Exception as e:
             logger.error(f"❌ Process tweet error for {tweet.id}: {e}")
-            self.unmark_processing(tweet.id)
+            self.unm_processing(tweet.id)
             return False
     
     async def cleanup_db(self):
