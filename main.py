@@ -483,8 +483,22 @@ class XTelegramBot:
             
             if len(clean_text) < 15:
                 return True, "too_short_without_links"
+
+            twitter_shorteners = re.findall(r't\.co/[\w]+', text_lower)
+            if twitter_shorteners:
+                logger.warning(f"⚠️ Found {len(twitter_shorteners)} Twitter shorteners: {twitter_shorteners}")
+                logger.warning(f"⚠️ This might redirect to blocked sites: {text[:100]}")
             
-            # โพสปกติ - ส่งได้
+            if media_urls:
+                for i, media_url in enumerate(media_urls):
+                    media_url_lower = media_url.lower()
+                    logger.info(f"🔍 Checking media URL {i+1}: {media_url}")
+                    
+                    for pattern in blocked_url_patterns:
+                        if re.search(pattern, media_url_lower, re.IGNORECASE):
+                            logger.warning(f"🚫 BLOCKED: Found blocked URL in media: {media_url}")
+                            return True, "blocked_media_url"
+
             return False, "normal"
             
         except Exception as e:
@@ -1335,6 +1349,22 @@ class XTelegramBot:
                 blocked_domains = ["cryptoquant", "arkm", "blofin", "whop"]
         
                 for tweet in sorted_tweets:
+                    # เพิ่มการตรวจสอบล่วงหน้า
+                    should_skip_early, reason_early = self.should_skip_post(tweet.text)
+                    logger.info(f"📋 Pre-check tweet {tweet.id}: skip={should_skip_early}, reason={reason_early}")
+                    
+                    if should_skip_early:
+                        logger.warning(f"🚫 Early block: {tweet.id} - {reason_early} | Text: {tweet.text[:100]}")
+                        # บันทึกว่าถูกบล็อกไว้
+                        content_hash = self.generate_content_hash(tweet.text)
+                        tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
+                        self.save_processed_tweet(
+                            tweet.id, tweet.text, f"[EARLY-BLOCKED-{reason_early.upper()}]", 
+                            tweet.created_at, tweet_url, account_id, content_hash, 
+                            tweet.conversation_id, False
+                        )
+                        continue
+        
                     logger.info(f"📝 Processing individual tweet: {tweet.id}")
                     success = await self.process_tweet(tweet, tweets.includes, account['id'])
                     
@@ -1432,6 +1462,12 @@ class XTelegramBot:
     
                 # ตรวจสอบ content filter
                 should_skip, skip_reason = self.should_skip_post(content, media_urls)
+
+                logger.info(f"🔍 Content check for {tweet.id}: '{content[:100]}...' | Media: {len(media_urls) if media_urls else 0}")
+                logger.info(f"🔍 Skip decision: {should_skip} | Reason: {skip_reason}")
+                if should_skip:
+                    logger.warning(f"🚫 DETAILED BLOCK: tweet {tweet.id} | Reason: {skip_reason} | Content: {content[:200]}")
+    
                 if should_skip:
                     logger.info(f"🚫 Skipping tweet {tweet.id} - Reason: {skip_reason}")
                     
