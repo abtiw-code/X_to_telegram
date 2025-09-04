@@ -54,7 +54,7 @@ class XTelegramBot:
         self.is_genuine_startup = self._check_genuine_startup()
         self.sent_message_hashes = set()
         self.max_sent_cache = 100
-
+    
     def generate_message_hash(self, content: str, media_urls: List[str] = None, tweet_id: str = None) -> str:
         """สร้าง hash สำหรับตรวจสอบข้อความซ้ำ"""
         hash_content = f"{tweet_id}|{content[:100]}|{len(media_urls) if media_urls else 0}"
@@ -392,16 +392,8 @@ class XTelegramBot:
         """
         try:
             import re
-    
-            # เพิ่มการตรวจสอบที่เข้มงวดขึ้น
-            blocked_keywords = [
-                "cryptoquant.com", "arkm.com", "blofin.com", "whop.com",
-                "auth.arkm.com"  # เพิ่ม subdomain ที่เจอ
-            ]
-            
             text_lower = text.lower()
     
-            # ✅ แก้ไขหลัก: ปรับปรุง URL patterns ให้จับได้ครอบคลุมมากขึ้น
             blocked_url_patterns = [
                 # Whop.com patterns - จับทุกรูปแบบ
                 r'(?:https?://)?(?:www\.)?whop\.com(?:/[\w\-\.%/?#&=]*)?',
@@ -439,12 +431,23 @@ class XTelegramBot:
                         return True, "blocked_blofin_com"
                     else:
                         return True, "blocked_url_pattern"
-                        
-            # ✅ เพิ่มการตรวจสอบ keyword แบบเข้มงวด
-            for keyword in blocked_keywords:
-                if keyword in text_lower:
-                    logger.warning(f"🚫 BLOCKED: Found keyword '{keyword}' in text: '{text[:100]}...'")
-                    return True, f"blocked_{keyword.replace('.', '_').replace('/', '_')}"
+
+            # ✅ เพิ่มการตรวจสอบ URL shortener ที่อาจซ่อน blocked domains
+            shortener_patterns = [
+                r'https?://t\.co/[^\s]+',
+                r'https?://bit\.ly/[^\s]+', 
+                r'https?://tinyurl\.com/[^\s]+',
+                r'https?://short\.link/[^\s]+',
+                r'https?://cutt\.ly/[^\s]+'
+            ]
+            
+            for pattern in shortener_patterns:
+                matches = re.findall(pattern, text_lower, re.IGNORECASE)
+                for short_url in matches:
+                    final_url = await self.resolve_url(short_url)
+                    if any(domain in final_url for domain in ["arkm.com", "cryptoquant.com", "whop.com", "blofin.com"]):
+                        logger.warning(f"🚫 BLOCKED: {short_url} → {final_url}")
+                        return True, "blocked_shortener_redirect"
             
             # ✅ เพิ่มการตรวจสอบ URL shortener ที่อาจซ่อน blocked domains
             shortener_patterns = [
@@ -578,6 +581,17 @@ class XTelegramBot:
             logger.error(f"Error removing links: {e}")
             return text
 
+    async def resolve_url(self, url: str) -> str:
+        """ขยาย short URL (เช่น t.co) ไปยัง URL จริง"""
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, allow_redirects=True) as resp:
+                    return str(resp.url)
+        except Exception as e:
+            logger.error(f"Resolve URL error for {url}: {e}")
+            return url
+    
     async def is_self_interaction(self, tweet, client, account_id) -> tuple:
         """ตรวจสอบว่าเป็นการโต้ตอบกับตัวเองหรือไม่ - ปรับปรุงแล้ว (Self-mention Priority)"""
         try:
@@ -1350,7 +1364,7 @@ class XTelegramBot:
         
                 for tweet in sorted_tweets:
                     # เพิ่มการตรวจสอบล่วงหน้า
-                    should_skip_early, reason_early = self.should_skip_post(tweet.text)
+                    should_skip_early, reason_early = await self.should_skip_post(tweet.text)
                     logger.info(f"📋 Pre-check tweet {tweet.id}: skip={should_skip_early}, reason={reason_early}")
                     
                     if should_skip_early:
@@ -1461,7 +1475,7 @@ class XTelegramBot:
                     return False
     
                 # ตรวจสอบ content filter
-                should_skip, skip_reason = self.should_skip_post(content, media_urls)
+                should_skip, skip_reason = await self.should_skip_post(content, media_urls)
 
                 logger.info(f"🔍 Content check for {tweet.id}: '{content[:100]}...' | Media: {len(media_urls) if media_urls else 0}")
                 logger.info(f"🔍 Skip decision: {should_skip} | Reason: {skip_reason}")
