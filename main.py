@@ -385,7 +385,7 @@ class XTelegramBot:
             logger.error(f"Error checking link-only post: {e}")
             return False
     
-    def should_skip_post(self, text: str, media_urls: List[str] = None) -> tuple:
+    async def should_skip_post(self, text: str, media_urls: List[str] = None) -> tuple:
         """
         ตรวจสอบว่าควรข้ามโพสนี้หรือไม่ - แก้ไขให้จับ URL ได้แม่นยำขึ้น
         Returns: (should_skip: bool, reason: str)
