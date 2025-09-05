@@ -387,52 +387,87 @@ class XTelegramBot:
     
     async def should_skip_post(self, text: str, media_urls: List[str] = None) -> tuple:
         """
-        ตรวจสอบว่าควรข้ามโพสนี้หรือไม่ - แก้ไขให้จับ URL ได้แม่นยำขึ้น
+        ตรวจสอบว่าควรข้ามโพสนี้หรือไม่ - ปรับปรุงการจับ Link Preview/Rich Preview
         Returns: (should_skip: bool, reason: str)
         """
         try:
             import re
             text_lower = text.lower()
     
+            # ✅ เพิ่ม Rich Preview/Link Preview Detection ที่แม่นยำขึ้น
+            rich_preview_domains = [
+                'cryptoquant.com',
+                'arkm.com', 
+                'auth.arkm.com',
+                'blofin.com',
+                'whop.com'
+            ]
+            
+            # ตรวจสอบ Rich Preview แบบละเอียด
+            for domain in rich_preview_domains:
+                domain_clean = domain.replace('auth.', '').replace('www.', '')
+                
+                # Pattern 1: Domain ปรากฏในข้อความโดยไม่มี URL รูปแบบ
+                if domain in text_lower and not any([
+                    f'http://{domain}' in text_lower,
+                    f'https://{domain}' in text_lower,
+                    f'http://www.{domain}' in text_lower,
+                    f'https://www.{domain}' in text_lower
+                ]):
+                    # อาจเป็น Rich Preview
+                    logger.warning(f"🔍 Potential Rich Preview detected: '{domain}' in text without full URL")
+                    logger.info(f"📝 Text content: {text[:150]}...")
+                    
+                    # ตรวจสอบเพิ่มเติมว่าเป็น Rich Preview จริงหรือไม่
+                    if self.is_likely_rich_preview(text, domain):
+                        logger.warning(f"🚫 RICH PREVIEW BLOCKED: {domain} | Text: {text[:100]}")
+                        return True, f"rich_preview_{domain.replace('.', '_')}"
+                
+                # Pattern 2: URL ที่ซ่อนอยู่ในข้อความ
+                hidden_patterns = [
+                    rf'(?:^|\s){re.escape(domain)}(?:\s|$)',  # domain เดี่ยวๆ
+                    rf'{re.escape(domain)}/[\w\-\.%/?#&=]*',   # domain + path
+                    rf'(?:www\.)?{re.escape(domain_clean)}',    # กับหรือไม่กับ www
+                ]
+                
+                for pattern in hidden_patterns:
+                    if re.search(pattern, text_lower, re.IGNORECASE):
+                        # ตรวจสอบว่าไม่ใช่การพูดถึงปกติ
+                        if not self.is_normal_mention(text, domain):
+                            logger.warning(f"🚫 BLOCKED: Hidden URL pattern '{domain}': {text[:100]}")
+                            return True, f"blocked_hidden_{domain.replace('.', '_')}"
+    
+            # ✅ Explicit URL patterns (เดิม)
             blocked_url_patterns = [
-                # Whop.com patterns - จับทุกรูปแบบ
                 r'(?:https?://)?(?:www\.)?whop\.com(?:/[\w\-\.%/?#&=]*)?',
                 r'(?:https?://)?[\w\-]+\.whop\.com(?:/[\w\-\.%/?#&=]*)?',
-                
-                # CryptoQuant patterns
                 r'(?:https?://)?(?:www\.)?cryptoquant\.com(?:/[\w\-\.%/?#&=]*)?',
                 r'(?:https?://)?[\w\-]+\.cryptoquant\.com(?:/[\w\-\.%/?#&=]*)?',
-                
-                # Arkm patterns - รวมทั้ง auth.arkm.com
                 r'(?:https?://)?(?:www\.)?arkm\.com(?:/[\w\-\.%/?#&=]*)?',
                 r'(?:https?://)?(?:auth\.)?arkm\.com(?:/[\w\-\.%/?#&=]*)?',
                 r'(?:https?://)?[\w\-]+\.arkm\.com(?:/[\w\-\.%/?#&=]*)?',
-                
-                # Blofin patterns
                 r'(?:https?://)?(?:www\.)?blofin\.com(?:/[\w\-\.%/?#&=]*)?',
                 r'(?:https?://)?[\w\-]+\.blofin\.com(?:/[\w\-\.%/?#&=]*)?',
             ]
             
-            # ตรวจสอบ URL patterns ที่เฉพาะเจาะจง
             for pattern in blocked_url_patterns:
                 matches = re.findall(pattern, text_lower, re.IGNORECASE)
                 if matches:
                     matched_url = matches[0] if matches else pattern
                     logger.warning(f"🚫 BLOCKED: Found URL pattern '{matched_url}' in text: '{text[:100]}...'")
                     
-                    # ระบุ domain ที่ถูกบล็อก
                     if 'whop.com' in matched_url:
                         return True, "blocked_whop_com"
                     elif 'cryptoquant.com' in matched_url:
-                        return True, "blocked_cryptoquant_com"
+                        return True, "blocked_cryptoquant_com"  
                     elif 'arkm.com' in matched_url:
                         return True, "blocked_arkm_com"
                     elif 'blofin.com' in matched_url:
                         return True, "blocked_blofin_com"
                     else:
                         return True, "blocked_url_pattern"
-
-            # ✅ เพิ่มการตรวจสอบ URL shortener ที่อาจซ่อน blocked domains
+    
+            # ✅ URL shortener ที่อาจซ่อน blocked domains
             shortener_patterns = [
                 r'https?://t\.co/[^\s]+',
                 r'https?://bit\.ly/[^\s]+', 
@@ -445,25 +480,10 @@ class XTelegramBot:
                 matches = re.findall(pattern, text_lower, re.IGNORECASE)
                 for short_url in matches:
                     final_url = await self.resolve_url(short_url)
-                    if any(domain in final_url for domain in ["arkm.com", "cryptoquant.com", "whop.com", "blofin.com"]):
+                    if any(domain in final_url for domain in rich_preview_domains):
                         logger.warning(f"🚫 BLOCKED: {short_url} → {final_url}")
                         return True, "blocked_shortener_redirect"
-            
-            # ✅ เพิ่มการตรวจสอบ URL shortener ที่อาจซ่อน blocked domains
-            shortener_patterns = [
-                r't\.co/[\w]+',
-                r'bit\.ly/[\w]+', 
-                r'tinyurl\.com/[\w]+',
-                r'short\.link/[\w]+',
-                r'cutt\.ly/[\w]+'
-            ]
-            
-            # แจ้งเตือนถ้าเจอ URL shortener (อาจต้องตรวจสอบเพิ่มเติม)
-            for pattern in shortener_patterns:
-                if re.search(pattern, text_lower, re.IGNORECASE):
-                    logger.info(f"⚠️ Found URL shortener in tweet, monitoring: {re.findall(pattern, text_lower)}")
-                    # ไม่บล็อกทันที แต่ log ไว้สังเกต
-            
+    
             # ตรวจสอบ emoji อย่างเดียว
             if self.is_emoji_only_post(text):
                 return True, "emoji_only"
@@ -473,9 +493,9 @@ class XTelegramBot:
                 return True, "link_only"
     
             # ตรวจสอบโพสสั้น + emoji + link
-            text_clean = re.sub(r'https?://[^\s]+|www\.[^\s]+|t\.co/[^\s]+', '', text)  # ลบ link
-            text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)  # ลบ emoji
-            text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)  # เก็บแค่ตัวอักษรและไทย
+            text_clean = re.sub(r'https?://[^\s]+|www\.[^\s]+|t\.co/[^\s]+', '', text)
+            text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
+            text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
             if len(text_clean) < 15:
                 return True, "short_content_with_link_emoji"
@@ -486,12 +506,8 @@ class XTelegramBot:
             
             if len(clean_text) < 15:
                 return True, "too_short_without_links"
-
-            twitter_shorteners = re.findall(r't\.co/[\w]+', text_lower)
-            if twitter_shorteners:
-                logger.warning(f"⚠️ Found {len(twitter_shorteners)} Twitter shorteners: {twitter_shorteners}")
-                logger.warning(f"⚠️ This might redirect to blocked sites: {text[:100]}")
-            
+    
+            # ตรวจสอบ media URLs
             if media_urls:
                 for i, media_url in enumerate(media_urls):
                     media_url_lower = media_url.lower()
@@ -501,12 +517,93 @@ class XTelegramBot:
                         if re.search(pattern, media_url_lower, re.IGNORECASE):
                             logger.warning(f"🚫 BLOCKED: Found blocked URL in media: {media_url}")
                             return True, "blocked_media_url"
-
+    
             return False, "normal"
             
         except Exception as e:
             logger.error(f"Error in should_skip_post: {e}")
             return False, "error"
+    
+    def is_likely_rich_preview(self, text: str, domain: str) -> bool:
+        """
+        ตรวจสอบว่าน่าจะเป็น Rich Preview หรือไม่
+        """
+        try:
+            text_lower = text.lower().strip()
+            
+            # ตรวจสอบลักษณะของ Rich Preview
+            rich_preview_indicators = [
+                # 1. Domain ปรากฏแต่ไม่มี protocol
+                domain in text_lower and not any([
+                    f'http://{domain}' in text_lower,
+                    f'https://{domain}' in text_lower
+                ]),
+                
+                # 2. ข้อความสั้นมากและมี domain
+                len(text_lower.replace(domain, '').strip()) < 20,
+                
+                # 3. Domain อยู่ท้ายข้อความ
+                text_lower.rstrip().endswith(domain),
+                
+                # 4. ไม่มีคำอธิบายเกี่ยวกับ link
+                not any(indicator in text_lower for indicator in [
+                    'check out', 'visit', 'see', 'read', 'link', 'url', 
+                    'website', 'ดู', 'เข้า', 'อ่าน', 'ลิงค์'
+                ]),
+                
+                # 5. มี domain แต่ไม่มี context การพูดถึง
+                domain in text_lower and not any(context in text_lower for context in [
+                    'from', 'on', 'at', 'via', 'according to', 'reports',
+                    'จาก', 'ที่', 'ตาม', 'รายงาน'
+                ])
+            ]
+            
+            # ถ้ามีอย่างน้อย 2 indicators = น่าจะเป็น Rich Preview
+            score = sum(rich_preview_indicators)
+            
+            if score >= 2:
+                logger.info(f"🔍 Rich Preview likelihood: {score}/5 indicators for domain '{domain}'")
+                logger.info(f"📝 Text analysis: '{text_lower}'")
+                return True
+                
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error in is_likely_rich_preview: {e}")
+            return False
+    
+    def is_normal_mention(self, text: str, domain: str) -> bool:
+        """
+        ตรวจสอบว่าเป็นการพูดถึงปกติหรือไม่ (ไม่ใช่ Rich Preview)
+        """
+        try:
+            text_lower = text.lower()
+            
+            # คำที่บ่งบอกว่าเป็นการพูดถึงปกติ
+            normal_mention_keywords = [
+                'analysis from', 'data from', 'according to', 'reports from',
+                'via', 'source:', 'credit:', 'h/t', 'hat tip',
+                'ข้อมูลจาก', 'ตาม', 'รายงานจาก', 'อ้างจาก', 'ที่มา:',
+                'based on', 'shows', 'indicates', 'suggests'
+            ]
+            
+            # ถ้ามีคำเหล่านี้ = การพูดถึงปกติ
+            for keyword in normal_mention_keywords:
+                if keyword in text_lower:
+                    logger.info(f"✅ Normal mention detected: keyword '{keyword}' found")
+                    return True
+            
+            # ถ้าข้อความยาวและมี context = การพูดถึงปกติ  
+            text_without_domain = text_lower.replace(domain.lower(), '').strip()
+            if len(text_without_domain) > 50:
+                logger.info(f"✅ Normal mention: sufficient context ({len(text_without_domain)} chars)")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error in is_normal_mention: {e}")
+            return False
     
     def test_url_blocking(self):
         """ฟังก์ชันทดสอบการบล็อก URL - เรียกใช้เพื่อ debug"""
