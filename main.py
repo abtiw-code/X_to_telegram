@@ -385,7 +385,7 @@ class XTelegramBot:
             logger.error(f"Error checking link-only post: {e}")
             return False
     
-    async def should_skip_post(self, text: str, media_urls: List[str] = None) -> tuple:
+    async def should_skip_post(self, text: str, media_urls: List[str] = None, includes=None) -> tuple:
         """
         ตรวจสอบว่าควรข้ามโพสนี้หรือไม่ - ปรับปรุงการจับ Link Preview/Rich Preview
         Returns: (should_skip: bool, reason: str)
@@ -393,6 +393,7 @@ class XTelegramBot:
         try:
             import re
             text_lower = text.lower()
+            blocked_domains = ["cryptoquant.com", "arkm.com", "blofin.com", "whop.com"]
     
             # ✅ เพิ่ม Rich Preview/Link Preview Detection ที่แม่นยำขึ้น
             rich_preview_domains = [
@@ -448,6 +449,11 @@ class XTelegramBot:
                 r'(?:https?://)?[\w\-]+\.arkm\.com(?:/[\w\-\.%/?#&=]*)?',
                 r'(?:https?://)?(?:www\.)?blofin\.com(?:/[\w\-\.%/?#&=]*)?',
                 r'(?:https?://)?[\w\-]+\.blofin\.com(?:/[\w\-\.%/?#&=]*)?',
+                r'(?:https?://)?(?:www\.)?whop\.com(?:/[\w\-\.%/?#&=]*)?',
+                r'\bwhop\.com\b',
+                r'\bcryptoquant\.com\b',
+                r'\barkm\.com\b',
+                r'\bblofin\.com\b',
             ]
             
             for pattern in blocked_url_patterns:
@@ -466,7 +472,19 @@ class XTelegramBot:
                         return True, "blocked_blofin_com"
                     else:
                         return True, "blocked_url_pattern"
-    
+
+            # ✅ ตรวจสอบ URL จาก includes (พวก preview card)
+            blocked_domains = ["cryptoquant.com", "arkm.com", "blofin.com", "whop.com"]
+        
+            if includes and "urls" in includes:
+                for u in includes["urls"]:
+                    expanded = getattr(u, "expanded_url", "") or ""
+                    display = getattr(u, "display_url", "") or ""
+                    for domain in blocked_domains:
+                        if domain in expanded.lower() or domain in display.lower():
+                            logger.warning(f"🚫 BLOCKED (url preview): {domain} | {expanded}")
+                            return True, f"blocked_{domain.replace('.', '_')}"
+            
             # ✅ URL shortener ที่อาจซ่อน blocked domains
             shortener_patterns = [
                 r'https?://t\.co/[^\s]+',
@@ -1461,7 +1479,7 @@ class XTelegramBot:
         
                 for tweet in sorted_tweets:
                     # เพิ่มการตรวจสอบล่วงหน้า
-                    should_skip_early, reason_early = await self.should_skip_post(tweet.text)
+                    should_skip_early, reason_early = await self.should_skip_post(tweet.text, includes=tweets.includes)
                     logger.info(f"📋 Pre-check tweet {tweet.id}: skip={should_skip_early}, reason={reason_early}")
                     
                     if should_skip_early:
@@ -1572,7 +1590,7 @@ class XTelegramBot:
                     return False
     
                 # ตรวจสอบ content filter
-                should_skip, skip_reason = await self.should_skip_post(content, media_urls)
+                should_skip, skip_reason = await self.should_skip_post(content, media_urls, includes=includes)
 
                 logger.info(f"🔍 Content check for {tweet.id}: '{content[:100]}...' | Media: {len(media_urls) if media_urls else 0}")
                 logger.info(f"🔍 Skip decision: {should_skip} | Reason: {skip_reason}")
