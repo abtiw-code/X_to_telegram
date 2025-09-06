@@ -437,7 +437,8 @@ class XTelegramBot:
             for phrase in blocked_phrases:
                 if phrase in text_lower:
                     logger.warning(f"🚫 BLOCKED: Found blocked phrase '{phrase}' in text: '{text[:100]}...'")
-                    return True, f'blocked_phrase_{phrase.replace(" ", "_").replace("\'", "")}'
+                    clean_phrase = phrase.replace(' ', '_').replace("'", '')
+                    return True, f"blocked_phrase_{clean_phrase}"
 
             
             # ✅ เพิ่ม Rich Preview/Link Preview Detection ที่แม่นยำขึ้น
