@@ -394,7 +394,52 @@ class XTelegramBot:
             import re
             text_lower = text.lower()
             blocked_domains = ["cryptoquant.com", "arkm.com", "blofin.com", "whop.com"]
-    
+
+            # ✅ เพิ่มการบล็อกคำและตัวเลขเฉพาะ
+            blocked_phrases = [
+                "Register for Arkham. One account gives you:",  
+                "$100 Signup Bonus",
+                "auth.arkm.com/register",
+                "จาก cryptoquant.com",
+                "whop.com/alicharts/",
+                "partner.blofin.com/d/AliCharts",
+                "Dive into our weekly report for all the details ⤵️",
+                "Read the complete analysis ⤵️",
+                "Read more ⤵️",
+                "Dive into our latest research dashboard for more ⤵️",
+                "Get the full insight ⤵️",
+                "Explore the full post ⤵️",
+                "Dive into the complete analysis ⤵️",
+                "Read the full analysis ⤵️",
+                "Explore the complete analysis ⤵️",
+                "Full post ⤵️",
+                "Dive into our research dashboard for the details ⤵️",
+                "Dive into our latest research dashboard for all the details ⤵️",
+                "Dive into the full analysis ⤵️",
+                "Get all the insights in our weekly report ⤵️",
+                "Read the complete breakdown ⤵️",
+                "Dive into our dashboard for more ⤵️",
+                "Dive into the complete breakdown ⤵️",
+                "Live chart ⤵️",
+                "See the complete breakdown ⤵️",
+                "See the data ⤵️",
+                "View the full post ⤵️",
+                "Full analysis ⤵️",
+                "Follow the complete breakdown ⤵️",
+                "Explore our latest dashboard on exchange token performance ⤵️",
+                "Dive into our dashboard on Altcoin momentum for more ⤵️",
+                "open.substack.com",
+                "partner.blofin.com/d/AliCharts",
+                "kcex.com/register",
+                "0% spot fees"
+            ]
+            
+            for phrase in blocked_phrases:
+                if phrase in text_lower:
+                    logger.warning(f"🚫 BLOCKED: Found blocked phrase '{phrase}' in text: '{text[:100]}...'")
+                    return True, f"blocked_phrase_{phrase.replace(' ', '_').replace("'", '')}"
+
+            
             # ✅ เพิ่ม Rich Preview/Link Preview Detection ที่แม่นยำขึ้น
             rich_preview_domains = [
                 'cryptoquant.com',
@@ -515,14 +560,14 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
-            if len(text_clean) < 15:
+            if len(text_clean) < 20:
                 return True, "short_content_with_link_emoji"
     
             # ตรวจสอบความยาวข้อความโดยไม่นับ link
             text_without_links = self.remove_links_from_text(text)
             clean_text = re.sub(r'[^\w]', '', text_without_links)
             
-            if len(clean_text) < 15:
+            if len(clean_text) < 20:
                 return True, "too_short_without_links"
     
             # ตรวจสอบ media URLs
