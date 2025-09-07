@@ -387,15 +387,21 @@ class XTelegramBot:
     
     async def should_skip_post(self, text: str, media_urls: List[str] = None, includes=None) -> tuple:
         """
-        ตรวจสอบว่าควรข้ามโพสนี้หรือไม่ - ปรับปรุงการจับ Link Preview/Rich Preview
+        ตรวจสอบว่าควรข้ามโพสนี้หรือไม่ - แก้ไข: เข้มงวดและปลอดภัยขึ้น
         Returns: (should_skip: bool, reason: str)
         """
         try:
             import re
-            text_lower = text.lower()
-            blocked_domains = ["cryptoquant.com", "arkm.com", "blofin.com", "whop.com"]
-
-            # ✅ เพิ่มการบล็อกคำและตัวเลขเฉพาะ
+            
+            # 🔥 แก้ไขหลัก 4: ป้องกัน Exception ที่ปล่อยผ่าน
+            if not text or len(text.strip()) == 0:
+                logger.warning("🚫 Empty or whitespace-only text")
+                return True, "empty_text"
+            
+            text_lower = text.lower().strip()
+            logger.info(f"🔍 Filtering text (first 100 chars): '{text[:100]}...'")
+            
+            # 🔥 แก้ไขหลัก 5: เพิ่มการ log ทุกการตรวจสอบ
             blocked_phrases = [
                 "Register for Arkham. One account gives you:",  
                 "$100 Signup Bonus",
@@ -435,159 +441,86 @@ class XTelegramBot:
                 "0% spot fees"
             ]
             
-            for phrase in blocked_phrases:
-                if phrase in text_lower:
-                    logger.warning(f"🚫 BLOCKED: Found blocked phrase '{phrase}' in text: '{text[:100]}...'")
-                    clean_phrase = phrase.replace(' ', '_').replace("'", '')
+            logger.info(f"🔍 Checking {len(blocked_phrases)} blocked phrases...")
+            for i, phrase in enumerate(blocked_phrases):
+                phrase_lower = phrase.lower()
+                if phrase_lower in text_lower:
+                    logger.error(f"🚫🚫 DEFINITE BLOCK #{i+1}: Found blocked phrase '{phrase}'")
+                    logger.error(f"📄 In text: '{text}'")
+                    clean_phrase = phrase.replace(' ', '_').replace("'", '').replace('.', '_').replace('/', '_')
                     return True, f"blocked_phrase_{clean_phrase}"
-
             
-            # ✅ เพิ่ม Rich Preview/Link Preview Detection ที่แม่นยำขึ้น
-            rich_preview_domains = [
-                'cryptoquant.com',
-                'arkm.com', 
-                'auth.arkm.com',
-                'blofin.com',
-                'whop.com'
-            ]
+            logger.info("✅ No blocked phrases found")
             
-            # ตรวจสอบ Rich Preview แบบละเอียด
-            for domain in rich_preview_domains:
-                domain_clean = domain.replace('auth.', '').replace('www.', '')
-                
-                # Pattern 1: Domain ปรากฏในข้อความโดยไม่มี URL รูปแบบ
-                if domain in text_lower and not any([
-                    f'http://{domain}' in text_lower,
-                    f'https://{domain}' in text_lower,
-                    f'http://www.{domain}' in text_lower,
-                    f'https://www.{domain}' in text_lower
-                ]):
-                    # อาจเป็น Rich Preview
-                    logger.warning(f"🔍 Potential Rich Preview detected: '{domain}' in text without full URL")
-                    logger.info(f"📝 Text content: {text[:150]}...")
-                    
-                    # ตรวจสอบเพิ่มเติมว่าเป็น Rich Preview จริงหรือไม่
-                    if self.is_likely_rich_preview(text, domain):
-                        logger.warning(f"🚫 RICH PREVIEW BLOCKED: {domain} | Text: {text[:100]}")
-                        return True, f"rich_preview_{domain.replace('.', '_')}"
-                
-                # Pattern 2: URL ที่ซ่อนอยู่ในข้อความ
-                hidden_patterns = [
-                    rf'(?:^|\s){re.escape(domain)}(?:\s|$)',  # domain เดี่ยวๆ
-                    rf'{re.escape(domain)}/[\w\-\.%/?#&=]*',   # domain + path
-                    rf'(?:www\.)?{re.escape(domain_clean)}',    # กับหรือไม่กับ www
-                ]
-                
-                for pattern in hidden_patterns:
-                    if re.search(pattern, text_lower, re.IGNORECASE):
-                        # ตรวจสอบว่าไม่ใช่การพูดถึงปกติ
-                        if not self.is_normal_mention(text, domain):
-                            logger.warning(f"🚫 BLOCKED: Hidden URL pattern '{domain}': {text[:100]}")
-                            return True, f"blocked_hidden_{domain.replace('.', '_')}"
-    
-            # ✅ Explicit URL patterns (เดิม)
-            blocked_url_patterns = [
-                r'(?:https?://)?(?:www\.)?whop\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?[\w\-]+\.whop\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?(?:www\.)?cryptoquant\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?[\w\-]+\.cryptoquant\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?(?:www\.)?arkm\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?(?:auth\.)?arkm\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?[\w\-]+\.arkm\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?(?:www\.)?blofin\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?[\w\-]+\.blofin\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'(?:https?://)?(?:www\.)?whop\.com(?:/[\w\-\.%/?#&=]*)?',
-                r'\bwhop\.com\b',
-                r'\bcryptoquant\.com\b',
-                r'\barkm\.com\b',
-                r'\bblofin\.com\b',
-            ]
-            
-            for pattern in blocked_url_patterns:
-                matches = re.findall(pattern, text_lower, re.IGNORECASE)
-                if matches:
-                    matched_url = matches[0] if matches else pattern
-                    logger.warning(f"🚫 BLOCKED: Found URL pattern '{matched_url}' in text: '{text[:100]}...'")
-                    
-                    if 'whop.com' in matched_url:
-                        return True, "blocked_whop_com"
-                    elif 'cryptoquant.com' in matched_url:
-                        return True, "blocked_cryptoquant_com"  
-                    elif 'arkm.com' in matched_url:
-                        return True, "blocked_arkm_com"
-                    elif 'blofin.com' in matched_url:
-                        return True, "blocked_blofin_com"
-                    else:
-                        return True, "blocked_url_pattern"
-
-            # ✅ ตรวจสอบ URL จาก includes (พวก preview card)
+            # ตรวจสอบ domains
             blocked_domains = ["cryptoquant.com", "arkm.com", "blofin.com", "whop.com"]
-        
-            if includes and "urls" in includes:
-                for u in includes["urls"]:
-                    expanded = getattr(u, "expanded_url", "") or ""
-                    display = getattr(u, "display_url", "") or ""
-                    for domain in blocked_domains:
-                        if domain in expanded.lower() or domain in display.lower():
-                            logger.warning(f"🚫 BLOCKED (url preview): {domain} | {expanded}")
-                            return True, f"blocked_{domain.replace('.', '_')}"
             
-            # ✅ URL shortener ที่อาจซ่อน blocked domains
-            shortener_patterns = [
-                r'https?://t\.co/[^\s]+',
-                r'https?://bit\.ly/[^\s]+', 
-                r'https?://tinyurl\.com/[^\s]+',
-                r'https?://short\.link/[^\s]+',
-                r'https?://cutt\.ly/[^\s]+'
+            logger.info(f"🔍 Checking {len(blocked_domains)} blocked domains...")
+            for domain in blocked_domains:
+                if domain.lower() in text_lower:
+                    logger.error(f"🚫🚫 DEFINITE BLOCK: Found blocked domain '{domain}'")
+                    logger.error(f"📄 In text: '{text}'")
+                    return True, f"blocked_domain_{domain.replace('.', '_')}"
+            
+            logger.info("✅ No blocked domains found")
+    
+            # เพิ่มการตรวจสอบ URL patterns ที่เข้มงวดขึ้น
+            suspicious_patterns = [
+                r'auth\.arkm\.com',
+                r'arkm\.com/register',
+                r'cryptoquant\.com',
+                r'blofin\.com',
+                r'whop\.com',
             ]
             
-            for pattern in shortener_patterns:
-                matches = re.findall(pattern, text_lower, re.IGNORECASE)
-                for short_url in matches:
-                    final_url = await self.resolve_url(short_url)
-                    if any(domain in final_url for domain in rich_preview_domains):
-                        logger.warning(f"🚫 BLOCKED: {short_url} → {final_url}")
-                        return True, "blocked_shortener_redirect"
+            logger.info(f"🔍 Checking {len(suspicious_patterns)} URL patterns...")
+            for pattern in suspicious_patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    matches = re.findall(pattern, text_lower, re.IGNORECASE)
+                    logger.error(f"🚫🚫 PATTERN BLOCK: Found pattern '{pattern}' -> {matches}")
+                    logger.error(f"📄 In text: '{text}'")
+                    return True, f"blocked_pattern_{pattern.replace('.', '_').replace('\\', '_')}"
+            
+            logger.info("✅ No blocked patterns found")
     
-            # ตรวจสอบ emoji อย่างเดียว
+            # ตรวจสอบ emoji และ link อย่างเดียว
             if self.is_emoji_only_post(text):
+                logger.info("🚫 Blocked: emoji only")
                 return True, "emoji_only"
             
-            # ตรวจสอบ link อย่างเดียว  
             if self.is_link_only_post(text):
+                logger.info("🚫 Blocked: link only")
                 return True, "link_only"
     
-            # ตรวจสอบโพสสั้น + emoji + link
+            # ตรวจสอบ media URLs
+            if media_urls:
+                logger.info(f"🔍 Checking {len(media_urls)} media URLs...")
+                for i, media_url in enumerate(media_urls):
+                    media_url_lower = media_url.lower()
+                    logger.info(f"🔍 Media URL {i+1}: {media_url}")
+                    
+                    for domain in blocked_domains:
+                        if domain in media_url_lower:
+                            logger.error(f"🚫🚫 MEDIA BLOCK: Found blocked domain '{domain}' in media URL")
+                            return True, f"blocked_media_{domain.replace('.', '_')}"
+    
+            # ตรวจสอบข้อความสั้น
             text_clean = re.sub(r'https?://[^\s]+|www\.[^\s]+|t\.co/[^\s]+', '', text)
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
             if len(text_clean) < 20:
+                logger.info(f"🚫 Blocked: too short ({len(text_clean)} chars)")
                 return True, "short_content_with_link_emoji"
     
-            # ตรวจสอบความยาวข้อความโดยไม่นับ link
-            text_without_links = self.remove_links_from_text(text)
-            clean_text = re.sub(r'[^\w]', '', text_without_links)
-            
-            if len(clean_text) < 20:
-                return True, "too_short_without_links"
-    
-            # ตรวจสอบ media URLs
-            if media_urls:
-                for i, media_url in enumerate(media_urls):
-                    media_url_lower = media_url.lower()
-                    logger.info(f"🔍 Checking media URL {i+1}: {media_url}")
-                    
-                    for pattern in blocked_url_patterns:
-                        if re.search(pattern, media_url_lower, re.IGNORECASE):
-                            logger.warning(f"🚫 BLOCKED: Found blocked URL in media: {media_url}")
-                            return True, "blocked_media_url"
-    
+            logger.info("✅ All checks passed - POST ALLOWED")
             return False, "normal"
             
         except Exception as e:
-            logger.error(f"Error in should_skip_post: {e}")
-            return False, "error"
+            # 🔥 แก้ไขหลัก 6: บล็อกเมื่อเกิด error เพื่อความปลอดภัย
+            logger.error(f"🚫 CRITICAL ERROR in filtering, BLOCKING for safety: {e}")
+            logger.error(f"📄 Text that caused error: '{text}'")
+            return True, "error_blocked_for_safety"
     
     def is_likely_rich_preview(self, text: str, domain: str) -> bool:
         """
@@ -1561,7 +1494,7 @@ class XTelegramBot:
             self._is_fetching = False
     
     async def process_tweet(self, tweet, includes=None, account_id=None) -> bool:
-        """Process individual tweet - แก้ไขการจัดการ truncated content"""
+        """Process individual tweet - แก้ไข: กรองก่อนประมวลผลทุกอย่าง"""
         try:
             if tweet.id in self.processed_tweets:
                 logger.info(f"⏭️ Tweet {tweet.id} already processed, skipping")
@@ -1574,14 +1507,29 @@ class XTelegramBot:
             self.m_processing(tweet.id)
         
             try:
-                # เก็บ original text ไว้สำหรับตรวจสอบ truncation
+                # 🔥 แก้ไขหลัก 1: กรองก่อนทุกอย่าง - ใช้ original tweet text
                 original_text = tweet.text
-                content = original_text
-                was_expanded = False
+                logger.info(f"🔍 CRITICAL FILTER CHECK - Tweet {tweet.id}")
+                logger.info(f"📝 Original text: '{original_text}'")
                 
-                logger.info(f"📝 Processing tweet {tweet.id}")
-                logger.info(f"   Original length: {len(original_text)} chars")
-                logger.info(f"   Is truncated: {self.is_truncated_tweet(original_text)}")
+                # ตรวจสอบการบล็อกก่อนประมวลผลใดๆ
+                should_skip_original, skip_reason_original = await self.should_skip_post(
+                    original_text, [], includes=includes
+                )
+                
+                if should_skip_original:
+                    logger.warning(f"🚫 BLOCKED AT ENTRY: {tweet.id} - {skip_reason_original}")
+                    logger.warning(f"📄 Blocked text: {original_text[:200]}")
+                    
+                    # บันทึกว่าถูกบล็อก
+                    content_hash = self.generate_content_hash(original_text)
+                    tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
+                    self.save_processed_tweet(
+                        tweet.id, original_text, f"[ENTRY-BLOCKED-{skip_reason_original.upper()}]", 
+                        tweet.created_at, tweet_url, account_id, content_hash, 
+                        tweet.conversation_id, False
+                    )
+                    return True
                 
                 # ตรวจสอบ interaction type
                 account_info = self.get_best_available_account()
@@ -1591,7 +1539,10 @@ class XTelegramBot:
                 is_self, interaction_type, target = await self.is_self_interaction(tweet, temp_client, account_id)
                 logger.info(f"Tweet {tweet.id}: is_self={is_self}, type={interaction_type}, target={target}")
                 
-                # พยายามขยายเนื้อหาถ้าจำเป็น
+                # ขยายเนื้อหาถ้าจำเป็น
+                content = original_text
+                was_expanded = False
+                
                 if hasattr(tweet, 'note_tweet') and tweet.note_tweet:
                     if hasattr(tweet.note_tweet, 'text'):
                         content = tweet.note_tweet.text
@@ -1611,14 +1562,30 @@ class XTelegramBot:
                         content = full_content
                         was_expanded = True
                         logger.info(f"✅ Retrieved expanded content: {len(content)} chars (was {len(original_text)})")
+                        
+                        # 🔥 แก้ไขหลัก 2: กรองเนื้อหาที่ขยายแล้วอีกครั้ง
+                        should_skip_expanded, skip_reason_expanded = await self.should_skip_post(
+                            content, [], includes=includes
+                        )
+                        
+                        if should_skip_expanded:
+                            logger.warning(f"🚫 BLOCKED AFTER EXPANSION: {tweet.id} - {skip_reason_expanded}")
+                            logger.warning(f"📄 Expanded blocked text: {content[:200]}")
+                            
+                            content_hash = self.generate_content_hash(content)
+                            tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
+                            self.save_processed_tweet(
+                                tweet.id, content, f"[EXPANDED-BLOCKED-{skip_reason_expanded.upper()}]", 
+                                tweet.created_at, tweet_url, account_id, content_hash, 
+                                tweet.conversation_id, False
+                            )
+                            return True
                     else:
                         logger.info(f"ℹ️ Could not expand content, using original: {len(original_text)} chars")
-                else:
-                    logger.info(f"✅ Content appears complete: {len(content)} chars")
                 
                 tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
                 
-                # จัดการ media (ไม่เปลี่ยน)
+                # จัดการ media
                 media_urls = []
                 if includes and 'media' in includes and hasattr(tweet, 'attachments') and tweet.attachments:
                     if 'media_keys' in tweet.attachments:
@@ -1630,37 +1597,34 @@ class XTelegramBot:
                                     elif media.type == 'video' and hasattr(media, 'preview_image_url'):
                                         media_urls.append(media.preview_image_url)
                 
+                # 🔥 แก้ไขหลัก 3: กรองรวม media ก่อนแปลภาษา
+                should_skip_with_media, skip_reason_media = await self.should_skip_post(
+                    content, media_urls, includes=includes
+                )
+                
+                if should_skip_with_media:
+                    logger.warning(f"🚫 BLOCKED WITH MEDIA: {tweet.id} - {skip_reason_media}")
+                    
+                    content_hash = self.generate_content_hash(content, media_urls)
+                    self.save_processed_tweet(
+                        tweet.id, content, f"[MEDIA-BLOCKED-{skip_reason_media.upper()}]", 
+                        tweet.created_at, tweet_url, account_id, content_hash, 
+                        tweet.conversation_id, False
+                    )
+                    return True
+                
                 # ตรวจสอบ duplicate
                 content_hash = self.generate_content_hash(content, media_urls)
                 if content_hash in self.processed_content_hashes:
                     logger.info(f"Skipping duplicate content for tweet {tweet.id}")
                     return False
     
-                # ตรวจสอบ content filter
-                should_skip, skip_reason = await self.should_skip_post(content, media_urls, includes=includes)
-
-                logger.info(f"🔍 Content check for {tweet.id}: '{content[:100]}...' | Media: {len(media_urls) if media_urls else 0}")
-                logger.info(f"🔍 Skip decision: {should_skip} | Reason: {skip_reason}")
-                if should_skip:
-                    logger.warning(f"🚫 DETAILED BLOCK: tweet {tweet.id} | Reason: {skip_reason} | Content: {content[:200]}")
-    
-                if should_skip:
-                    logger.info(f"🚫 Skipping tweet {tweet.id} - Reason: {skip_reason}")
-                    
-                    self.save_processed_tweet(
-                        tweet.id, content, f"[SKIPPED-{skip_reason.upper()}] {content[:100]}", 
-                        tweet.created_at, tweet_url, account_id, content_hash, 
-                        tweet.conversation_id, False
-                    )
-                    return True
+                logger.info(f"✅ Tweet {tweet.id} passed all filters, proceeding to translate...")
                 
-                logger.info(f"✅ Tweet {tweet.id} passed all filters, proceeding...")
-                
-                # แปลภาษา
+                # แปลภาษาหลังจากกรองเรียบร้อยแล้ว
                 translated = await self.translate_text(content)
                 thai_time = self.get_thai_time(tweet.created_at)
                 
-                # ✅ แก้ไขหลัก: ส่ง original tweet object ไปด้วยเพื่อตรวจสอบ truncation
                 message = self.format_message_by_interaction_type(
                     tweet, translated, thai_time, tweet_url, interaction_type, target
                 )
@@ -1676,7 +1640,6 @@ class XTelegramBot:
     
                 logger.info(f"✅ Successfully processed {interaction_type} tweet {tweet.id}")
                 
-                # Log สรุป
                 if was_expanded:
                     logger.info(f"📈 Content expanded: {len(original_text)} → {len(content)} chars")
                 elif self.is_truncated_tweet(original_text):
