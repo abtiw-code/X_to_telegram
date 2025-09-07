@@ -479,7 +479,8 @@ class XTelegramBot:
                     matches = re.findall(pattern, text_lower, re.IGNORECASE)
                     logger.error(f"🚫🚫 PATTERN BLOCK: Found pattern '{pattern}' -> {matches}")
                     logger.error(f"📄 In text: '{text}'")
-                    return True, f"blocked_pattern_{pattern.replace('.', '_').replace('\\', '_')}"
+                    clean_pattern = pattern.replace('.', '_').replace('\\', '_')
+                    return True, f"blocked_pattern_{clean_pattern}"
             
             logger.info("✅ No blocked patterns found")
     
