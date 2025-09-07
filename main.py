@@ -547,13 +547,12 @@ class XTelegramBot:
                 # 4. ไม่มีคำอธิบายเกี่ยวกับ link
                 not any(indicator in text_lower for indicator in [
                     'check out', 'visit', 'see', 'read', 'link', 'url', 
-                    'website', 'ดู', 'เข้า', 'อ่าน', 'ลิงค์'
+                    'website'
                 ]),
                 
                 # 5. มี domain แต่ไม่มี context การพูดถึง
                 domain in text_lower and not any(context in text_lower for context in [
-                    'from', 'on', 'at', 'via', 'according to', 'reports',
-                    'จาก', 'ที่', 'ตาม', 'รายงาน'
+                    'from', 'on', 'at', 'via', 'according to', 'reports'
                 ])
             ]
             
@@ -581,9 +580,7 @@ class XTelegramBot:
             # คำที่บ่งบอกว่าเป็นการพูดถึงปกติ
             normal_mention_keywords = [
                 'analysis from', 'data from', 'according to', 'reports from',
-                'via', 'source:', 'credit:', 'h/t', 'hat tip',
-                'ข้อมูลจาก', 'ตาม', 'รายงานจาก', 'อ้างจาก', 'ที่มา:',
-                'based on', 'shows', 'indicates', 'suggests'
+                'via', 'source:', 'credit:', 'h/t', 'hat tip'
             ]
             
             # ถ้ามีคำเหล่านี้ = การพูดถึงปกติ
