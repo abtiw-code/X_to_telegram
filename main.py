@@ -510,7 +510,7 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
-            if len(text_clean) < 20:
+            if len(text_clean) < 15:
                 logger.info(f"🚫 Blocked: too short ({len(text_clean)} chars)")
                 return True, "short_content_with_link_emoji"
     
@@ -1342,6 +1342,7 @@ class XTelegramBot:
                 account_info = self.get_best_available_account()
                 account = account_info['account']
                 new_account_index = account_info['index']
+                account_id = account['id']
             
                 if old_account_index != new_account_index:
                     current_time = time.time()
