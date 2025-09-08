@@ -24,7 +24,7 @@ class XTelegramBot:
     def __init__(self):
         self.telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
         self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        self.typhoon_api_key = os.getenv('TYPHOON_API_KEY')
         self.thai_tz = pytz.timezone('Asia/Bangkok')
         self.x_accounts = self._setup_x_accounts()
         self.current_account_index = 0
@@ -1128,12 +1128,12 @@ class XTelegramBot:
         
         try:
             headers = {
-                'Authorization': f'Bearer {self.openai_api_key}',
+                'Authorization': f'Bearer {self.typhoon_api_key}',
                 'Content-Type': 'application/json'
             }
             
             payload = {
-                'model': 'gpt-4o-mini',
+                'model': 'typhoon-v2.1-12b-instruct',
                 'messages': [
                     {
                         'role': 'system',
@@ -1147,15 +1147,17 @@ class XTelegramBot:
                     },
                     {'role': 'user', 'content': text}
                 ],
-                'max_tokens': 2000,
-                'temperature': 0.1
+                'max_tokens': 4000,
+                'temperature': 0.3,
+                'top_p': 0.9,
+                'stream': False
             }
             
             timeout = aiohttp.ClientTimeout(total=60)
             
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
-                    'https://api.openai.com/v1/chat/completions',
+                    'https://api.opentyphoon.ai/v1/chat/completions',
                     headers=headers,
                     json=payload
                 ) as response:
