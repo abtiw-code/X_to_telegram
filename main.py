@@ -778,18 +778,11 @@ class XTelegramBot:
     
     
     def format_message_by_interaction_type(self, tweet, translated_content, thai_time, tweet_url, interaction_type, target_info):
-        """จัดรูปแบบข้อความตามประเภท interaction - แก้ไขการแสดงผล truncated"""
-    
-        # ✅ แก้ไข: ตรวจสอบ truncated จาก original text ของ tweet
+        """จัดรูปแบบข้อความตามประเภท interaction - แก้ไขลิงก์ซ้ำ"""
+
         original_text = getattr(tweet, 'text', '')
         is_truncated = self.is_truncated_tweet(original_text)
-        
-        # สร้างส่วนแจ้งเตือน truncated
-        truncated_note = ""
-        if is_truncated:
-            truncated_note = f"\n\n🔗 <b>ข้อความยาวเกิน</b> - <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
-        
-        # จัดรูปแบบตาม interaction type
+                
         if interaction_type == 'self_mention_pure':
             base_message = f"💬 <b>@{self.target_username} กล่าวถึงตัวเอง</b>\n\n{translated_content}"
         
@@ -806,18 +799,15 @@ class XTelegramBot:
             base_message = f"↩️ <b>@{self.target_username} ตอบตัวเอง</b>\n\n{translated_content}"
         
         else:
-            # Normal tweet หรือกรณีอื่นๆ
             base_message = f"𝕏 @{self.target_username}\n\n{translated_content}"
         
-        # รวมข้อความทั้งหมด - ใช้ลิงก์เดียว
         if is_truncated:
-            full_message = f"{base_message}{truncated_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+            full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
         else:
             full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
     
-        # Log เพื่อ debug
         if is_truncated:
-            logger.info(f"📏 Added truncation notice for tweet {tweet.id} (original length: {len(original_text)})")
+            logger.info(f"📏 Truncated tweet {tweet.id} - using 'อ่านเต็มที่ X' link")
     
         return full_message
     
