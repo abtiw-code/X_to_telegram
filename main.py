@@ -1131,19 +1131,42 @@ class XTelegramBot:
                 'Authorization': f'Bearer {self.typhoon_api_key}',
                 'Content-Type': 'application/json'
             }
+
+             # รายการคำที่ไม่ควรแปล (ขยายเพิ่มเติม)
+            preserve_terms = [
+                # คำศัพท์การเงิน
+                "bull market", "bear market", "bullish", "bearish",
+                "market cap", "volume", "liquidity", "volatility",
+                "RSI", "MACD", "EMA", "SMA",
+                "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation",
+                
+                # หน่วยและตัวเลข
+                "USD", "EUR", "GBP", "JPY", "CNY", "THB", "million", "billion", "trillion",
+                "k", "M", "B", "T", "%", "$", "€", "£", "¥", "₹", "₿", "฿",
             
+            ]
+    
+            # สร้าง list คำที่ต้องอนุรักษ์ในรูปแบบ case-insensitive
+            preserve_list = '", "'.join(preserve_terms)
+    
             payload = {
                 'model': 'typhoon-v2.1-12b-instruct',
                 'messages': [
                     {
                         'role': 'system',
                         'content': '''คุณเป็นนักแปลข่าวคริปโตและการเงินมืออาชีพ แปลเป็นภาษาไทยที่เข้าใจง่าย ใช้คำศัพท์ที่คนไทยคุ้นเคย 
-                        กฎการแปล:
-                        ชื่อบุคคล ชื่อบริษัท ชื่อแพลตฟอร์ม → เก็บภาษาอังกฤษ
-                        ตัวเลข เปอร์เซ็นต์  สกุลเงิน → เก็บภาษาอังกฤษ
-                        คำศัพท์เทคนิคด้านคริปโตและการเงิน → เก็บภาษาอังกฤษ
-                        ถ้าไม่แน่ใจว่าควรแปลหรือไม่ → เก็บภาษาอังกฤษ
-                        แปลเฉพาะความหมายและบริบท ไม่ต้องเพิ่มคำอธิบาย'''
+                        === กฎการแปล ===
+                        1. **ห้ามแปลคำเหล่านี้โดยเด็ดขาด**: "{preserve_list}"
+                        2. ชื่อบุคคล, ชื่อบริษัท, ชื่อแพลตฟอร์ม ให้เก็บเป็นภาษาอังกฤษ
+                        3. ตัวเลข, เปอร์เซ็นต์, สกุลเงิน ให้เก็บเป็นภาษาอังกฤษ
+                        4. คำศัพท์เทคนิคด้านคริปโตและการเงิน ให้เก็บเป็นภาษาอังกฤษ
+                        
+                        === ตัวอย่าง ===
+                        - "Bitcoin hits $50,000" -> "Bitcoin แตะ $50,000"
+                        - "Ethereum DeFi protocol" -> "โปรโตคอล DeFi ของ Ethereum" 
+                        - "bullish trend continues" -> "เทรนด์ bullish ยังคงดำเนินต่อไป"
+                        
+                        แปลเฉพาะข้อความ ไม่ต้องใส่คำอธิบายเพิ่มเติม:'''
                     },
                     {'role': 'user', 'content': text}
                 ],
