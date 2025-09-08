@@ -1138,7 +1138,7 @@ class XTelegramBot:
                 "bull market", "bear market", "bullish", "bearish",
                 "market cap", "volume", "liquidity", "volatility",
                 "RSI", "MACD", "EMA", "SMA",
-                "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation",
+                "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation"
                 
                 # หน่วยและตัวเลข
                 "USD", "EUR", "GBP", "JPY", "CNY", "THB", "million", "billion", "trillion",
@@ -1171,7 +1171,7 @@ class XTelegramBot:
                     {'role': 'user', 'content': text}
                 ],
                 'max_tokens': 4000,
-                'temperature': 0.3,
+                'temperature': 0.1,
                 'top_p': 0.9,
                 'stream': False
             }
