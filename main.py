@@ -1596,7 +1596,7 @@ class XTelegramBot:
                     else:
                         logger.info(f"ℹ️ Could not expand content, using original: {len(original_text)} chars")
                 
-                tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
+                # tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
                 
                 # จัดการ media
                 media_urls = []
