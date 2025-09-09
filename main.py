@@ -1172,7 +1172,7 @@ class XTelegramBot:
                 ],
                 'max_tokens': 4000,
                 'temperature': 0.1,
-                'top_p': 0.9,
+                'top_p': 0.5,
                 'stream': False
             }
             
@@ -1564,7 +1564,7 @@ class XTelegramBot:
                 logger.info(f"Tweet {tweet.id}: is_self={is_self}, type={interaction_type}, target={target}")
                 
                 # ขยายเนื้อหาถ้าจำเป็น
-                content = self.remove_links_from_text(original_text)
+                content = original_text
                 was_expanded = False
                 
                 if hasattr(tweet, 'note_tweet') and tweet.note_tweet:
@@ -1644,16 +1644,16 @@ class XTelegramBot:
                     return False
     
                 logger.info(f"✅ Tweet {tweet.id} passed all filters, proceeding to translate...")
-
-                # ลบลิงก์ออกก่อนแปล
-                clean_content = self.remove_links_from_text(content)
-
+                
                 # แปลภาษาหลังจากกรองเรียบร้อยแล้ว
                 translated = await self.translate_text(content)
                 thai_time = self.get_thai_time(tweet.created_at)
-                
+
+                # ลบลิงก์ออกหลังแปล ก่อนส่งไป Telegram
+                translated_no_links = self.remove_links_from_text(translated)
+
                 message = self.format_message_by_interaction_type(
-                    tweet, translated, thai_time, tweet_url, interaction_type, target
+                    tweet, translated_no_links, thai_time, tweet_url, interaction_type, target
                 )
     
                 # ส่งข้อความ
