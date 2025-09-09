@@ -510,7 +510,7 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
-            if len(text_clean) < 20:
+            if len(text_clean) < 15:
                 logger.info(f"🚫 Blocked: too short ({len(text_clean)} chars)")
                 return True, "short_content_with_link_emoji"
     
@@ -665,9 +665,8 @@ class XTelegramBot:
             # ลบ URLs ทั้งหมดออก
             text_without_urls = url_regex.sub('', text)
             
-            # ลบ multiple spaces แต่เก็บ newlines และ paragraph breaks
-            cleaned_text = re.sub(r'[ \t]+', ' ', text_without_urls)  # ลบ space/tab ซ้ำ แต่เก็บ \n
-            cleaned_text = re.sub(r'^\s+|\s+$', '', cleaned_text, flags=re.MULTILINE)  # trim แต่ละบรรทัด
+            # ลบ whitespace ที่เหลือ
+            cleaned_text = re.sub(r'\s+', ' ', text_without_urls).strip()
             
             return cleaned_text
             
@@ -1132,13 +1131,13 @@ class XTelegramBot:
                 'Authorization': f'Bearer {self.typhoon_api_key}',
                 'Content-Type': 'application/json'
             }
-            
-            # รายการคำที่ไม่ควรแปล (ขยายเพิ่มเติม)
+
+             # รายการคำที่ไม่ควรแปล (ขยายเพิ่มเติม)
             preserve_terms = [
                 # คำศัพท์การเงิน
                 "bull market", "bear market", "bullish", "bearish",
                 "market cap", "volume", "liquidity", "volatility",
-                "RSI", "MACD", "EMA", "SMA", "Short Term Holder", "Long Term Holder",
+                "RSI", "MACD", "EMA", "SMA",
                 "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation"
                 
                 # หน่วยและตัวเลข
@@ -1161,16 +1160,11 @@ class XTelegramBot:
                         2. ชื่อบุคคล, ชื่อบริษัท, ชื่อแพลตฟอร์ม ให้เก็บเป็นภาษาอังกฤษ
                         3. ตัวเลข, เปอร์เซ็นต์, สกุลเงิน ให้เก็บเป็นภาษาอังกฤษ
                         4. คำศัพท์เทคนิคด้านคริปโตและการเงิน ให้เก็บเป็นภาษาอังกฤษ
-                        5. รักษาโครงสร้างข้อความเดิมไว้ทุกอย่าง
-                        6. เก็บการขึ้นบรรทัดใหม่
-                        7. เก็บการเว้นย่อหน้า  
-                        8. เก็บการเว้นวรรคระหว่างประโยค
                         
                         === ตัวอย่าง ===
                         - "Bitcoin hits $50,000" -> "Bitcoin แตะ $50,000"
                         - "Ethereum DeFi protocol" -> "โปรโตคอล DeFi ของ Ethereum" 
                         - "bullish trend continues" -> "เทรนด์ bullish ยังคงดำเนินต่อไป"
-                        - "Whale Open long positions" -> "วาฬเปิดสถานะ long positions"
                         
                         แปลเฉพาะข้อความ ไม่ต้องใส่คำอธิบายเพิ่มเติม:'''
                     },
@@ -1178,10 +1172,9 @@ class XTelegramBot:
                 ],
                 'max_tokens': 4000,
                 'temperature': 0.1,
-                'top_p': 0.5,
+                'top_p': 0.9,
                 'stream': False
             }
-
             
             timeout = aiohttp.ClientTimeout(total=60)
             
@@ -1359,6 +1352,7 @@ class XTelegramBot:
                 account_info = self.get_best_available_account()
                 account = account_info['account']
                 new_account_index = account_info['index']
+                account_id = account['id']
             
                 if old_account_index != new_account_index:
                     current_time = time.time()
@@ -1570,7 +1564,7 @@ class XTelegramBot:
                 logger.info(f"Tweet {tweet.id}: is_self={is_self}, type={interaction_type}, target={target}")
                 
                 # ขยายเนื้อหาถ้าจำเป็น
-                content = original_text
+                content = self.remove_links_from_text(original_text)
                 was_expanded = False
                 
                 if hasattr(tweet, 'note_tweet') and tweet.note_tweet:
@@ -1650,10 +1644,12 @@ class XTelegramBot:
                     return False
     
                 logger.info(f"✅ Tweet {tweet.id} passed all filters, proceeding to translate...")
-                
-                content_no_links = self.remove_links_from_text(content)
-                
-                translated = await self.translate_text(content_no_links)
+
+                # ลบลิงก์ออกก่อนแปล
+                clean_content = self.remove_links_from_text(content)
+
+                # แปลภาษาหลังจากกรองเรียบร้อยแล้ว
+                translated = await self.translate_text(content)
                 thai_time = self.get_thai_time(tweet.created_at)
                 
                 message = self.format_message_by_interaction_type(
