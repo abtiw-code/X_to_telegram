@@ -510,7 +510,7 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
-            if len(text_clean) < 15:
+            if len(text_clean) < 20:
                 logger.info(f"🚫 Blocked: too short ({len(text_clean)} chars)")
                 return True, "short_content_with_link_emoji"
     
@@ -1128,11 +1128,11 @@ class XTelegramBot:
         
         try:
             headers = {
-                'Authorization': f'Bearer {self.typhoon_api_key}',
+                'Authorization': f'Bearer {self.openai_api_key}',
                 'Content-Type': 'application/json'
             }
-
-             # รายการคำที่ไม่ควรแปล (ขยายเพิ่มเติม)
+            
+            # รายการคำที่ไม่ควรแปล (ขยายเพิ่มเติม)
             preserve_terms = [
                 # คำศัพท์การเงิน
                 "bull market", "bear market", "bullish", "bearish",
@@ -1172,9 +1172,10 @@ class XTelegramBot:
                 ],
                 'max_tokens': 4000,
                 'temperature': 0.1,
-                'top_p': 0.9,
+                'top_p': 0.5,
                 'stream': False
             }
+
             
             timeout = aiohttp.ClientTimeout(total=60)
             
@@ -1352,7 +1353,6 @@ class XTelegramBot:
                 account_info = self.get_best_available_account()
                 account = account_info['account']
                 new_account_index = account_info['index']
-                account_id = account['id']
             
                 if old_account_index != new_account_index:
                     current_time = time.time()
