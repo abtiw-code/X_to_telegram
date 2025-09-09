@@ -786,9 +786,9 @@ class XTelegramBot:
         is_truncated = self.is_truncated_tweet(original_text)
         
         # สร้างส่วนแจ้งเตือน truncated
-        # truncated_note = ""
-        # if is_truncated:
-        #     truncated_note = f"\n\n🔗 <b>ข้อความยาวเกิน</b> - <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+        truncated_note = ""
+        if is_truncated:
+            truncated_note = f"\n\n🔗 <b>ข้อความยาวเกิน</b> - <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
         
         # จัดรูปแบบตาม interaction type
         if interaction_type == 'self_mention_pure':
