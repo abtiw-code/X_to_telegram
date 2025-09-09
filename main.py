@@ -16,6 +16,7 @@ from threading import Lock
 import pytz
 from aiohttp import web
 import hashlib
+import re
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -287,7 +288,6 @@ class XTelegramBot:
 
     def is_emoji_only_post(self, text: str) -> bool:
         """ตรวจสอบว่าโพสมี emoji อย่างเดียวหรือไม่"""
-        import re
     
         try:
             # ลบ whitespace, newline ทุกประเภทออก
@@ -335,7 +335,6 @@ class XTelegramBot:
     
     def is_link_only_post(self, text: str) -> bool:
         """ตรวจสอบว่าโพสมี link อย่างเดียวหรือไม่"""
-        import re
         
         try:
             # ลบ whitespace ออก
@@ -391,7 +390,6 @@ class XTelegramBot:
         Returns: (should_skip: bool, reason: str)
         """
         try:
-            import re
             
             # 🔥 แก้ไขหลัก 4: ป้องกัน Exception ที่ปล่อยผ่าน
             if not text or len(text.strip()) == 0:
@@ -623,7 +621,6 @@ class XTelegramBot:
     # ✅ เพิ่มฟังก์ชันช่วยตรวจสอบ URL ที่ซับซ้อนขึ้น
     def extract_all_urls(self, text: str) -> List[str]:
         """ดึง URL ทั้งหมดจากข้อความ รวมทั้ง URL ที่ไม่มี http://"""
-        import re
         
         url_patterns = [
             r'https?://[^\s]+',                    # http:// หรือ https://
@@ -644,7 +641,6 @@ class XTelegramBot:
     
     def remove_links_from_text(self, text: str) -> str:
         """ลบ link ออกจากข้อความ แล้วคืนค่าข้อความที่เหลือ"""
-        import re
         
         try:
             # URL patterns - รวมหลายรูปแบบ
@@ -695,7 +691,6 @@ class XTelegramBot:
             if tweet.text.startswith('@') or '@' in tweet.text:
                 try:
                     # Extract all mentions from tweet text
-                    import re
                     mention_pattern = r'@(\w+)'
                     all_mentions = re.findall(mention_pattern, tweet.text.lower())
                     
@@ -852,7 +847,6 @@ class XTelegramBot:
             return False
         
         try:
-            import re
             mention_pattern = r'@(\w+)'
             all_mentions = re.findall(mention_pattern, tweet.text.lower())
             
@@ -1649,11 +1643,15 @@ class XTelegramBot:
                 translated = await self.translate_text(content)
                 thai_time = self.get_thai_time(tweet.created_at)
 
-                # ลบลิงก์ออกหลังแปล ก่อนส่งไป Telegram
-                translated_no_links = self.remove_links_from_text(translated)
-
+                # ✅ ลบลิงก์ออกจากข้อความแปล แต่เก็บการเว้นบรรทัด/ย่อหน้าไว้
+                translated_clean = self.remove_links_from_text(translated)
+                
+                # ลดช่องว่างซ้ำ แต่ไม่ลบ \n เพื่อรักษารูปแบบย่อหน้า
+                translated_preserve = re.sub(r'[ \t]+', ' ', translated_clean).strip()
+                
+                # ใช้ข้อความที่จัดการแล้วส่งไป Telegram
                 message = self.format_message_by_interaction_type(
-                    tweet, translated_no_links, thai_time, tweet_url, interaction_type, target
+                    tweet, translated_preserve, thai_time, tweet_url, interaction_type, target
                 )
     
                 # ส่งข้อความ
