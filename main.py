@@ -811,7 +811,7 @@ class XTelegramBot:
         
         # รวมข้อความทั้งหมด - ใช้ลิงก์เดียว
         if is_truncated:
-            full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+            full_message = f"{base_message}{truncated_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
         else:
             full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
     
@@ -1645,8 +1645,9 @@ class XTelegramBot:
     
                 logger.info(f"✅ Tweet {tweet.id} passed all filters, proceeding to translate...")
                 
-                # แปลภาษาหลังจากกรองเรียบร้อยแล้ว
-                translated = await self.translate_text(content)
+                content_no_links = self.remove_links_from_text(content)
+                
+                translated = await self.translate_text(content_no_links)
                 thai_time = self.get_thai_time(tweet.created_at)
                 
                 message = self.format_message_by_interaction_type(
