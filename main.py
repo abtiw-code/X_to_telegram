@@ -665,8 +665,9 @@ class XTelegramBot:
             # ลบ URLs ทั้งหมดออก
             text_without_urls = url_regex.sub('', text)
             
-            # ลบ whitespace ที่เหลือ
-            cleaned_text = re.sub(r'\s+', ' ', text_without_urls).strip()
+            # ลบ multiple spaces แต่เก็บ newlines และ paragraph breaks
+            cleaned_text = re.sub(r'[ \t]+', ' ', text_without_urls)  # ลบ space/tab ซ้ำ แต่เก็บ \n
+            cleaned_text = re.sub(r'^\s+|\s+$', '', cleaned_text, flags=re.MULTILINE)  # trim แต่ละบรรทัด
             
             return cleaned_text
             
@@ -1137,7 +1138,7 @@ class XTelegramBot:
                 # คำศัพท์การเงิน
                 "bull market", "bear market", "bullish", "bearish",
                 "market cap", "volume", "liquidity", "volatility",
-                "RSI", "MACD", "EMA", "SMA",
+                "RSI", "MACD", "EMA", "SMA", "Short Term Holder", "Long Term Holder",
                 "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation"
                 
                 # หน่วยและตัวเลข
@@ -1160,11 +1161,16 @@ class XTelegramBot:
                         2. ชื่อบุคคล, ชื่อบริษัท, ชื่อแพลตฟอร์ม ให้เก็บเป็นภาษาอังกฤษ
                         3. ตัวเลข, เปอร์เซ็นต์, สกุลเงิน ให้เก็บเป็นภาษาอังกฤษ
                         4. คำศัพท์เทคนิคด้านคริปโตและการเงิน ให้เก็บเป็นภาษาอังกฤษ
+                        5. รักษาโครงสร้างข้อความเดิมไว้ทุกอย่าง
+                        6. เก็บการขึ้นบรรทัดใหม่
+                        7. เก็บการเว้นย่อหน้า  
+                        8. เก็บการเว้นวรรคระหว่างประโยค
                         
                         === ตัวอย่าง ===
                         - "Bitcoin hits $50,000" -> "Bitcoin แตะ $50,000"
                         - "Ethereum DeFi protocol" -> "โปรโตคอล DeFi ของ Ethereum" 
                         - "bullish trend continues" -> "เทรนด์ bullish ยังคงดำเนินต่อไป"
+                        - "Whale Open long positions" -> "วาฬเปิดสถานะ long positions"
                         
                         แปลเฉพาะข้อความ ไม่ต้องใส่คำอธิบายเพิ่มเติม:'''
                     },
