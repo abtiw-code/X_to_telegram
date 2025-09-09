@@ -332,6 +332,85 @@ class XTelegramBot:
         except Exception as e:
             logger.error(f"Error checking emoji-only post: {e}")
             return False
+
+    def remove_links_from_text_preserve_format(self, text: str) -> str:
+        """ลบ link ออกจากข้อความแต่รักษารูปแบบการเว้นบรรทัดและย่อหน้าไว้"""
+    
+        try:
+            # URL patterns - รวมหลายรูปแบบ
+            url_patterns = [
+                r'https?://[^\s]+',           # http://... หรือ https://...
+                r'www\.[^\s]+',               # www....
+                r't\.co/[^\s]+',              # Twitter short links
+                r'bit\.ly/[^\s]+',            # Bitly links
+                r'tinyurl\.com/[^\s]+',       # TinyURL
+                r'youtu\.be/[^\s]+',          # YouTube short links
+                r'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/?[^\s]*'  # domain.com/...
+            ]
+            
+            # รวม patterns ทั้งหมด
+            combined_pattern = '|'.join(f'({pattern})' for pattern in url_patterns)
+            url_regex = re.compile(combined_pattern, re.IGNORECASE)
+            
+            # ลบ URLs ทั้งหมดออก
+            text_without_urls = url_regex.sub('', text)
+            
+            # รักษา newlines และย่อหน้า แต่จัดการ space ส่วนเกิน
+            lines = text_without_urls.split('\n')
+            cleaned_lines = []
+            
+            for line in lines:
+                # ลบ space ส่วนเกินในแต่ละบรรทัด แต่เก็บ leading/trailing spaces ที่จำเป็น
+                cleaned_line = re.sub(r'[ \t]{2,}', ' ', line.rstrip())
+                cleaned_lines.append(cleaned_line)
+            
+            # รวมบรรทัดกลับมาด้วย \n
+            cleaned_text = '\n'.join(cleaned_lines)
+            
+            # เก็บ empty lines ไว้ทั้งหมด - ไม่ลดบรรทัดว่าง
+            # result = re.sub(r'\n{3,}', '\n\n', cleaned_text)  # ปิดการใช้งาน
+            
+            # Trim ที่ต้นและท้าย
+            cleaned_text = cleaned_text.strip()
+            
+            return cleaned_text
+            
+        except Exception as e:
+            logger.error(f"Error removing links while preserving format: {e}")
+            return text
+    
+    def clean_translated_text_preserve_format(self, translated_text: str) -> str:
+        """จัดการข้อความแปลแล้วโดยรักษารูปแบบการเว้นบรรทัด"""
+        
+        try:
+            # 1. ลบลิงก์ออกแต่รักษารูปแบบ
+            text_without_links = self.remove_links_from_text_preserve_format(translated_text)
+            
+            # 2. จัดการ spacing แต่รักษา line breaks
+            lines = text_without_links.split('\n')
+            processed_lines = []
+            
+            for line in lines:
+                # ลบ space ซ้ำในบรรทัด แต่ไม่แตะ newlines
+                cleaned_line = re.sub(r'[ \t]+', ' ', line.strip())
+                processed_lines.append(cleaned_line)
+            
+            # 3. รวมกลับและจัดการ empty lines
+            result = '\n'.join(processed_lines)
+            
+            # เก็บ empty lines ไว้ทั้งหมด - ไม่ลดบรรทัดว่าง
+            # result = re.sub(r'\n\s*\n\s*\n', '\n\n', result)  # ปิดการใช้งาน
+            
+            # Final cleanup
+            result = result.strip()
+            
+            logger.info(f"Preserved format - Original lines: {len(translated_text.split(chr(10)))}, Final lines: {len(result.split(chr(10)))}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error cleaning translated text: {e}")
+            return translated_text
     
     def is_link_only_post(self, text: str) -> bool:
         """ตรวจสอบว่าโพสมี link อย่างเดียวหรือไม่"""
@@ -407,7 +486,7 @@ class XTelegramBot:
                 "From cryptoquant.com",
                 "whop.com/alicharts/",
                 "From luma.com",
-                "partner.blofin.com/d/AliCharts",
+                "blofin.com",
                 "Dive into our weekly report for all the details ⤵️",
                 "Read the complete analysis ⤵️",
                 "Read more ⤵️",
@@ -1167,7 +1246,7 @@ class XTelegramBot:
                 ],
                 'max_tokens': 4000,
                 'temperature': 0.1,
-                'top_p': 0.5,
+                'top_p': 1.0,
                 'stream': False
             }
             
@@ -1644,11 +1723,11 @@ class XTelegramBot:
                 translated = await self.translate_text(content)
                 thai_time = self.get_thai_time(tweet.created_at)
 
-                # ✅ ลบลิงก์ออกจากข้อความแปล แต่เก็บการเว้นบรรทัด/ย่อหน้าไว้
+                # ลบลิงก์ออกจากข้อความแปล แต่เก็บการเว้นบรรทัด/ย่อหน้าไว้
                 translated_clean = self.remove_links_from_text(translated)
-                
-                # ลดช่องว่างซ้ำ แต่ไม่ลบ \n เพื่อรักษารูปแบบย่อหน้า
-                translated_preserve = re.sub(r'[ \t]+', ' ', translated_clean).strip()
+
+                # จัดการข้อความแปลแล้วโดยรักษารูปแบบการเว้นบรรทัดและย่อหน้า
+                translated_preserve = self.clean_translated_text_preserve_format(translated)
                 
                 # ใช้ข้อความที่จัดการแล้วส่งไป Telegram
                 message = self.format_message_by_interaction_type(
