@@ -785,9 +785,9 @@ class XTelegramBot:
         is_truncated = self.is_truncated_tweet(original_text)
         
         # สร้างส่วนแจ้งเตือน truncated
-        truncated_note = ""
-        if is_truncated:
-            truncated_note = f"\n\n🔗 <b>ข้อความยาวเกิน</b> - <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+        # truncated_note = ""
+        # if is_truncated:
+        #     truncated_note = f"\n\n🔗 <b>ข้อความยาวเกิน</b> - <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
         
         # จัดรูปแบบตาม interaction type
         if interaction_type == 'self_mention_pure':
@@ -811,7 +811,7 @@ class XTelegramBot:
         
         # รวมข้อความทั้งหมด - ใช้ลิงก์เดียว
         if is_truncated:
-            full_message = f"{base_message}{truncated_note}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+            full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
         else:
             full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
     
@@ -1128,7 +1128,7 @@ class XTelegramBot:
         
         try:
             headers = {
-                'Authorization': f'Bearer {self.openai_api_key}',
+                'Authorization': f'Bearer {self.typhoon_api_key}',
                 'Content-Type': 'application/json'
             }
             
