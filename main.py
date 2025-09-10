@@ -478,7 +478,7 @@ class XTelegramBot:
             text_lower = text.lower().strip()
             logger.info(f"🔍 Filtering text (first 100 chars): '{text[:100]}...'")
 
-            if "⤵️" in text and len(text.strip()) < 10:
+            if "⤵️" in text and len(text.strip()) < 15:
                 logger.info(f"🚫 Blocked: too short with arrow symbol ⤵️ (len={len(text.strip())})")
                 return True, "short_with_arrow"
             
@@ -512,7 +512,7 @@ class XTelegramBot:
                 "See the complete breakdown ⤵️",
                 # "See the data ⤵️",
                 "View the full post ⤵️",
-                "Full analysis ⤵️",
+                # "Full analysis ⤵️",
                 "Follow the complete breakdown ⤵️",
                 "Explore our latest dashboard on exchange token performance ⤵️",
                 "Dive into our dashboard on Altcoin momentum for more ⤵️",
