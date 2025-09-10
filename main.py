@@ -490,7 +490,7 @@ class XTelegramBot:
                 "From cryptoquant.com",
                 "whop.com/alicharts/",
                 "From luma.com",
-                "blofin.com",
+                "blofin",
                 "Dive into our weekly report for all the details ⤵️",
                 "Read the complete analysis ⤵️",
                 # "Read more ⤵️",
