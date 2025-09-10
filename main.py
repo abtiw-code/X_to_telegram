@@ -287,7 +287,7 @@ class XTelegramBot:
         return time_diff > timedelta(minutes=60) # ดึงข้อความไม่เก่ากว่า 60นาที
 
     def is_emoji_only_post(self, text: str) -> bool:
-        """ตรวจสอบว่าโพสมี emoji อย่างเดียวหรือไม่"""
+        """ตรวจสอบว่าโพสมี emoji อย่างเดียวหรือไม่."""
     
         try:
             # ลบ whitespace, newline ทุกประเภทออก
