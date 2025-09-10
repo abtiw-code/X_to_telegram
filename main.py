@@ -1104,8 +1104,8 @@ class XTelegramBot:
             "t.co/" in text and text.rstrip().endswith("…")  # Link + ellipsis
         ]
         
-        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 300 ตัวอักษร)
-        suspicious_length = len(text) >= 300 and any([
+        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 290 ตัวอักษร)
+        suspicious_length = len(text) >= 290 and any([
             text.rstrip().endswith("…"),
             text.rstrip().endswith("..."),
             not text.rstrip().endswith("."),  # ไม่จบด้วยจุด
