@@ -477,6 +477,10 @@ class XTelegramBot:
             
             text_lower = text.lower().strip()
             logger.info(f"🔍 Filtering text (first 100 chars): '{text[:100]}...'")
+
+            if "⤵️" in text and len(text.strip()) < 10:
+                logger.info(f"🚫 Blocked: too short with arrow symbol ⤵️ (len={len(text.strip())})")
+                return True, "short_with_arrow"
             
             # 🔥 แก้ไขหลัก 5: เพิ่มการ log ทุกการตรวจสอบ
             blocked_phrases = [
@@ -489,14 +493,14 @@ class XTelegramBot:
                 "blofin.com",
                 "Dive into our weekly report for all the details ⤵️",
                 "Read the complete analysis ⤵️",
-                "Read more ⤵️",
+                # "Read more ⤵️",
                 "Dive into our latest research dashboard for more ⤵️",
                 "Get the full insight ⤵️",
                 "Explore the full post ⤵️",
                 "Dive into the complete analysis ⤵️",
                 "Read the full analysis ⤵️",
                 "Explore the complete analysis ⤵️",
-                "Full post ⤵️",
+                # "Full post ⤵️",
                 "Dive into our research dashboard for the details ⤵️",
                 "Dive into our latest research dashboard for all the details ⤵️",
                 "Dive into the full analysis ⤵️",
@@ -504,9 +508,9 @@ class XTelegramBot:
                 "Read the complete breakdown ⤵️",
                 "Dive into our dashboard for more ⤵️",
                 "Dive into the complete breakdown ⤵️",
-                "Live chart ⤵️",
+                # "Live chart ⤵️",
                 "See the complete breakdown ⤵️",
-                "See the data ⤵️",
+                # "See the data ⤵️",
                 "View the full post ⤵️",
                 "Full analysis ⤵️",
                 "Follow the complete breakdown ⤵️",
@@ -515,6 +519,7 @@ class XTelegramBot:
                 "open.substack.com",
                 "partner.blofin.com/d/AliCharts",
                 "kcex.com/register",
+                "7-day trial",
                 "0% spot fees"
             ]
             
@@ -1099,8 +1104,8 @@ class XTelegramBot:
             "t.co/" in text and text.rstrip().endswith("…")  # Link + ellipsis
         ]
         
-        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 280 ตัวอักษร)
-        suspicious_length = len(text) >= 280 and any([
+        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 300 ตัวอักษร)
+        suspicious_length = len(text) >= 300 and any([
             text.rstrip().endswith("…"),
             text.rstrip().endswith("..."),
             not text.rstrip().endswith("."),  # ไม่จบด้วยจุด
