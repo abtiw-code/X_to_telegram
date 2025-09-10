@@ -1195,8 +1195,12 @@ class XTelegramBot:
     
     async def translate_text(self, text: str) -> str:
         """Translate text with caching"""
+        if not text or not text.strip():
+            return text
+    
         text_hash = hash(text)
         if text_hash in self.translation_cache:
+            logger.info(f"Using cached translation for hash: {text_hash}")
             return self.translation_cache[text_hash]
         
         try:
@@ -1209,14 +1213,18 @@ class XTelegramBot:
             preserve_terms = [
                 # คำศัพท์การเงิน
                 "bull market", "bear market", "bullish", "bearish",
-                "market cap", "volume", "liquidity", "volatility",
-                "RSI", "MACD", "EMA", "SMA",
+                "market cap", "volume", "liquidity", "volatility", "FUD", "ATH", "ATL", "whale", "diamond hands",
+                "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump",
                 "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation"
                 
                 # หน่วยและตัวเลข
                 "USD", "EUR", "GBP", "JPY", "CNY", "THB", "million", "billion", "trillion",
                 "k", "M", "B", "T", "%", "$", "€", "£", "¥", "₹", "₿", "฿",
-            
+
+                # Technical terms
+                "API", "DApp", "smart contract", "blockchain", "hash rate",
+                "mining", "staking", "yield farming", "liquidity pool"
+                
             ]
     
             # สร้าง list คำที่ต้องอนุรักษ์ในรูปแบบ case-insensitive
@@ -1236,9 +1244,10 @@ class XTelegramBot:
                         5. ต้องรักษารูปแบบการเว้นบรรทัด (newline) และย่อหน้าให้เหมือนต้นฉบับ
                         
                         === ตัวอย่าง ===
-                        - "Bitcoin hits $50,000" -> "Bitcoin แตะ $50,000"
-                        - "Ethereum DeFi protocol" -> "โปรโตคอล DeFi ของ Ethereum" 
-                        - "bullish trend continues" -> "เทรนด์ bullish ยังคงดำเนินต่อไป"
+                        - "Bitcoin hits $50,000" → "Bitcoin แตะ $50,000"
+                        - "Ethereum DeFi protocol" → "โปรโตคอล DeFi ของ Ethereum" 
+                        - "bullish trend continues" → "เทรนด์ bullish ยังคงดำเนินต่อไป"
+                        - "DeFi protocols are gaining momentum" → "โปรโตคอล DeFi กำลังได้รับความนิยมเพิ่มขึ้น"
                         
                         แปลเฉพาะข้อความ ไม่ต้องใส่คำอธิบายเพิ่มเติม:'''
                     },
@@ -1261,16 +1270,84 @@ class XTelegramBot:
                     
                     if response.status == 200:
                         data = await response.json()
-                        translated = data['choices'][0]['message']['content'].strip()
-                        self.translation_cache[text_hash] = translated
-                        return translated
-        
+                        if 'choices' in data and len(data['choices']) > 0:
+                            translated = data['choices'][0]['message']['content'].strip()
+                            
+                            # ตรวจสอบคุณภาพการแปล
+                            if self.is_translation_valid(text, translated):
+                                # จำกัดขนาด cache
+                                if len(self.translation_cache) > self.max_cache_size:
+                                    # เก็บแค่ 25 รายการล่าสุด
+                                    cache_items = list(self.translation_cache.items())
+                                    self.translation_cache = dict(cache_items[-25:])
+                                
+                                self.translation_cache[text_hash] = translated
+                                logger.info(f"Translation successful: {len(text)} chars -> {len(translated)} chars")
+                                return translated
+                            else:
+                                logger.warning(f"Translation quality check failed, using original text")
+                                self.translation_cache[text_hash] = text
+                                return text
+                        else:
+                            logger.error("No choices in API response")
+                            return text
+                    else:
+                        logger.error(f"Translation API error: {response.status}")
+                        error_text = await response.text()
+                        logger.error(f"Error response: {error_text}")
+                        return text
+
+        except asyncio.TimeoutError:
+            logger.error("Translation timeout")
+            return text
         except Exception as e:
             logger.error(f"Translation error: {e}")
+            return text
+
+    def is_translation_valid(self, original: str, translated: str) -> bool:
+        """ตรวจสอบคุณภาพการแปล"""
+        try:
+            # ตรวจสอบพื้นฐาน
+            if not translated or not translated.strip():
+                logger.warning("Empty translation result")
+                return False
+            
+            # ตรวจสอบว่าแปลจริงหรือคืนข้อความเดิม
+            if translated.strip() == original.strip():
+                logger.info("Translation returned original text (might be intentional)")
+                return True
+            
+            # ตรวจสอบความยาวผิดปกติ
+            if len(translated) > len(original) * 3:
+                logger.warning(f"Translation too long: {len(translated)} vs {len(original)}")
+                return False
+            
+            if len(translated) < len(original) * 0.3:
+                logger.warning(f"Translation too short: {len(translated)} vs {len(original)}")
+                return False
+            
+            # ตรวจสอบว่ามี preserved terms ครบหรือไม่
+            preserve_terms = ["Bitcoin", "BTC", "Ethereum", "ETH", "$", "%", "bullish", "bearish", "DeFi"]
+            for term in preserve_terms:
+                if term in original and term not in translated:
+                    logger.warning(f"Missing preserved term '{term}' in translation")
+                    # อนุญาตให้ผ่านไปได้ แต่แจ้งเตือน
+            
+            # ตรวจสอบการเว้นบรรทัด
+            original_lines = len(original.split('\n'))
+            translated_lines = len(translated.split('\n'))
+            
+            if original_lines > 1 and abs(original_lines - translated_lines) > 1:
+                logger.warning(f"Line count mismatch: {original_lines} vs {translated_lines}")
+                # ไม่ปฏิเสธ แค่แจ้งเตือน
         
-        self.translation_cache[text_hash] = text
-        return text
-    
+            logger.info("Translation quality check passed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Translation validation error: {e}")
+            return True  # ให้ผ่านไปเมื่อเกิดข้อผิดพลาดในการตรวจสอบ
+        
     async def download_media(self, url: str) -> Optional[bytes]:
         """Download media with improved timeout and validation"""
         try:
