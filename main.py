@@ -134,7 +134,7 @@ class XTelegramBot:
             return True  
     
     def get_best_available_account(self) -> Dict:
-        """Get best available account with rotation every 20 minutes"""
+        """Get best available account with rotation every 20 minute"""
         current_time = time.time()
     
         time_slot = int(current_time // (20 * 60))  # 20 minutes = 1200 seconds
