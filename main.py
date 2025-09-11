@@ -41,7 +41,8 @@ class XTelegramBot:
         self.processed_content_hashes: Set[str] = set()
         self.since_id = None
         self.translation_cache = {}
-        self.max_cache_size = 50
+        self.use_translation_cache = False
+        self.max_cache_size = 0
         self.fetch_interval = 20 
         self.ping_interval = 5
         self.cleanup_interval = 15
@@ -1204,9 +1205,9 @@ class XTelegramBot:
             return text
     
         text_hash = hash(text)
-        if text_hash in self.translation_cache:
-            logger.info(f"Using cached translation for hash: {text_hash}")
-            return self.translation_cache[text_hash]
+        # if text_hash in self.translation_cache:
+        #     logger.info(f"Using cached translation for hash: {text_hash}")
+        #     return self.translation_cache[text_hash]
         
         try:
             headers = {
