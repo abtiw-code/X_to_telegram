@@ -534,38 +534,6 @@ class XTelegramBot:
                     return True, f"blocked_phrase_{clean_phrase}"
             
             logger.info("✅ No blocked phrases found")
-            
-            # ตรวจสอบ domains
-            blocked_domains = ["cryptoquant.com", "arkm.com", "blofin.com", "whop.com"]
-            
-            logger.info(f"🔍 Checking {len(blocked_domains)} blocked domains...")
-            for domain in blocked_domains:
-                if domain.lower() in text_lower:
-                    logger.error(f"🚫🚫 DEFINITE BLOCK: Found blocked domain '{domain}'")
-                    logger.error(f"📄 In text: '{text}'")
-                    return True, f"blocked_domain_{domain.replace('.', '_')}"
-            
-            logger.info("✅ No blocked domains found")
-    
-            # เพิ่มการตรวจสอบ URL patterns ที่เข้มงวดขึ้น
-            suspicious_patterns = [
-                r'auth\.arkm\.com',
-                r'arkm\.com/register',
-                r'cryptoquant\.com',
-                r'blofin\.com',
-                r'whop\.com',
-            ]
-            
-            logger.info(f"🔍 Checking {len(suspicious_patterns)} URL patterns...")
-            for pattern in suspicious_patterns:
-                if re.search(pattern, text_lower, re.IGNORECASE):
-                    matches = re.findall(pattern, text_lower, re.IGNORECASE)
-                    logger.error(f"🚫🚫 PATTERN BLOCK: Found pattern '{pattern}' -> {matches}")
-                    logger.error(f"📄 In text: '{text}'")
-                    clean_pattern = pattern.replace('.', '_').replace('\\', '_')
-                    return True, f"blocked_pattern_{clean_pattern}"
-            
-            logger.info("✅ No blocked patterns found")
     
             # ตรวจสอบ emoji และ link อย่างเดียว
             if self.is_emoji_only_post(text):
@@ -575,18 +543,6 @@ class XTelegramBot:
             if self.is_link_only_post(text):
                 logger.info("🚫 Blocked: link only")
                 return True, "link_only"
-    
-            # ตรวจสอบ media URLs
-            if media_urls:
-                logger.info(f"🔍 Checking {len(media_urls)} media URLs...")
-                for i, media_url in enumerate(media_urls):
-                    media_url_lower = media_url.lower()
-                    logger.info(f"🔍 Media URL {i+1}: {media_url}")
-                    
-                    for domain in blocked_domains:
-                        if domain in media_url_lower:
-                            logger.error(f"🚫🚫 MEDIA BLOCK: Found blocked domain '{domain}' in media URL")
-                            return True, f"blocked_media_{domain.replace('.', '_')}"
     
             # ตรวจสอบข้อความสั้น
             text_clean = re.sub(r'https?://[^\s]+|www\.[^\s]+|t\.co/[^\s]+', '', text)
@@ -605,84 +561,6 @@ class XTelegramBot:
             logger.error(f"🚫 CRITICAL ERROR in filtering, BLOCKING for safety: {e}")
             logger.error(f"📄 Text that caused error: '{text}'")
             return True, "error_blocked_for_safety"
-    
-    def is_likely_rich_preview(self, text: str, domain: str) -> bool:
-        """
-        ตรวจสอบว่าน่าจะเป็น Rich Preview หรือไม่
-        """
-        try:
-            text_lower = text.lower().strip()
-            
-            # ตรวจสอบลักษณะของ Rich Preview
-            rich_preview_indicators = [
-                # 1. Domain ปรากฏแต่ไม่มี protocol
-                domain in text_lower and not any([
-                    f'http://{domain}' in text_lower,
-                    f'https://{domain}' in text_lower
-                ]),
-                
-                # 2. ข้อความสั้นมากและมี domain
-                len(text_lower.replace(domain, '').strip()) < 20,
-                
-                # 3. Domain อยู่ท้ายข้อความ
-                text_lower.rstrip().endswith(domain),
-                
-                # 4. ไม่มีคำอธิบายเกี่ยวกับ link
-                not any(indicator in text_lower for indicator in [
-                    'check out', 'visit', 'see', 'read', 'link', 'url', 
-                    'website'
-                ]),
-                
-                # 5. มี domain แต่ไม่มี context การพูดถึง
-                domain in text_lower and not any(context in text_lower for context in [
-                    'from', 'on', 'at', 'via', 'according to', 'reports'
-                ])
-            ]
-            
-            # ถ้ามีอย่างน้อย 2 indicators = น่าจะเป็น Rich Preview
-            score = sum(rich_preview_indicators)
-            
-            if score >= 2:
-                logger.info(f"🔍 Rich Preview likelihood: {score}/5 indicators for domain '{domain}'")
-                logger.info(f"📝 Text analysis: '{text_lower}'")
-                return True
-                
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error in is_likely_rich_preview: {e}")
-            return False
-    
-    def is_normal_mention(self, text: str, domain: str) -> bool:
-        """
-        ตรวจสอบว่าเป็นการพูดถึงปกติหรือไม่ (ไม่ใช่ Rich Preview)
-        """
-        try:
-            text_lower = text.lower()
-            
-            # คำที่บ่งบอกว่าเป็นการพูดถึงปกติ
-            normal_mention_keywords = [
-                'analysis from', 'data from', 'according to', 'reports from',
-                'via', 'source:', 'credit:', 'h/t', 'hat tip'
-            ]
-            
-            # ถ้ามีคำเหล่านี้ = การพูดถึงปกติ
-            for keyword in normal_mention_keywords:
-                if keyword in text_lower:
-                    logger.info(f"✅ Normal mention detected: keyword '{keyword}' found")
-                    return True
-            
-            # ถ้าข้อความยาวและมี context = การพูดถึงปกติ  
-            text_without_domain = text_lower.replace(domain.lower(), '').strip()
-            if len(text_without_domain) > 50:
-                logger.info(f"✅ Normal mention: sufficient context ({len(text_without_domain)} chars)")
-                return True
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error in is_normal_mention: {e}")
-            return False
     
     def test_url_blocking(self):
         """ฟังก์ชันทดสอบการบล็อก URL - เรียกใช้เพื่อ debug"""
@@ -1636,7 +1514,6 @@ class XTelegramBot:
                 logger.info(f"📝 Processing {len(sorted_tweets)} tweets individually")
 
                 final_tweets = []
-                blocked_domains = ["cryptoquant", "arkm", "blofin", "whop"]
         
                 for tweet in sorted_tweets:
                     # เพิ่มการตรวจสอบล่วงหน้า
