@@ -1346,83 +1346,83 @@ class XTelegramBot:
                 for i, url in enumerate(media_urls[:5]):  # จำกัด 5 ไฟล์
                     try:
                         media_data = await self.download_media(url)
-        				if media_data:
-            				caption = content[:1024] if i == 0 else None
+        ________________if media_data:
+            ________________caption = content[:1024] if i == 0 else None
             
-            				# ตรวจสอบประเภทไฟล์จาก content และ URL
-            				content_type = self.detect_media_type(media_data, url)
-				            
-            				if content_type.startswith('image/'):
-                				media_files.append(InputMediaPhoto(
-                    				media=media_data,
-                    				caption=caption,
-                    				parse_mode='HTML' if caption else None,
-                    				has_spoiler=False  # ไม่ blur
-                				))
-                				logger.info(f"📸 Processed HIGH QUALITY image {i+1}: {len(media_data)} bytes")
-				                
-            				elif content_type.startswith('video/'):
-                				media_files.append(InputMediaVideo(
-                    				media=media_data,
-                    				caption=caption,
-                    				parse_mode='HTML' if caption else None,
-                    				supports_streaming=True,  # รองรับ streaming
-                    				has_spoiler=False
-                				))
-                				logger.info(f"🎥 Processed HIGH QUALITY video {i+1}: {len(media_data)} bytes")
-				                
-            				else:
-                				# สำหรับไฟล์ที่ไม่ระบุประเภท ลองส่งเป็นรูป
-                				media_files.append(InputMediaPhoto(
-                    				media=media_data,
-                    				caption=caption,
-                    				parse_mode='HTML' if caption else None
-                				))
-                				logger.info(f"📄 Processed unknown media type {i+1} as photo: {len(media_data)} bytes")
-				        
-    				except Exception as media_error:
-        				logger.error(f"Error processing media {url}: {media_error}")
-        				continue
-				    
-    				# เพิ่มเวลารอระหว่างการประมวลผล media
-    				await asyncio.sleep(4)
-				
-				def detect_media_type(self, media_data: bytes, url: str) -> str:
-    				"""ตรวจสอบประเภทของ media จาก content และ URL"""
-    				try:
-        				# ตรวจสอบจาก magic bytes ก่อน
-        				if media_data[:4] == b'\xff\xd8\xff\xe0' or media_data[:4] == b'\xff\xd8\xff\xe1':
-            				return 'image/jpeg'
-        				elif media_data[:8] == b'\x89PNG\r\n\x1a\n':
-            				return 'image/png'
-        				elif media_data[:6] == b'GIF87a' or media_data[:6] == b'GIF89a':
-            				return 'image/gif'
-        				elif media_data[:4] == b'WEBP' or media_data[8:12] == b'WEBP':
-            				return 'image/webp'
-        				elif media_data[:4] == b'\x00\x00\x00\x18' or media_data[:4] == b'\x00\x00\x00\x20':
-            				return 'video/mp4'
-        				elif media_data[:11] == b'\x00\x00\x00\x00ftypqt':
-            				return 'video/quicktime'
-				        
-        				# ตรวจสอบจาก URL extension
-        				url_lower = url.lower()
-        				if any(ext in url_lower for ext in ['.jpg', '.jpeg']):
-            				return 'image/jpeg'
-        				elif '.png' in url_lower:
-            				return 'image/png'
-        				elif '.gif' in url_lower:
-            				return 'image/gif'
-        				elif '.webp' in url_lower:
-            				return 'image/webp'
-        				elif any(ext in url_lower for ext in ['.mp4', '.mov', '.avi']):
-            				return 'video/mp4'
-				        
-        				# default เป็น image
-        				return 'image/jpeg'
-				        
-    				except Exception as e:
-        				logger.error(f"Error detecting media type: {e}")
-        				return 'image/jpeg'  # fallback
+            ________________# ตรวจสอบประเภทไฟล์จาก content และ URL
+            ________________content_type = self.detect_media_type(media_data, url)
+________________            
+            ________________if content_type.startswith('image/'):
+                ________________media_files.append(InputMediaPhoto(
+                    ________________media=media_data,
+                    ________________caption=caption,
+                    ________________parse_mode='HTML' if caption else None,
+                    ________________has_spoiler=False  # ไม่ blur
+                ________________))
+                ________________logger.info(f"📸 Processed HIGH QUALITY image {i+1}: {len(media_data)} bytes")
+________________                
+            ________________elif content_type.startswith('video/'):
+                ________________media_files.append(InputMediaVideo(
+                    ________________media=media_data,
+                    ________________caption=caption,
+                    ________________parse_mode='HTML' if caption else None,
+                    ________________supports_streaming=True,  # รองรับ streaming
+                    ________________has_spoiler=False
+                ________________))
+                ________________logger.info(f"🎥 Processed HIGH QUALITY video {i+1}: {len(media_data)} bytes")
+________________                
+            ________________else:
+                ________________# สำหรับไฟล์ที่ไม่ระบุประเภท ลองส่งเป็นรูป
+                ________________media_files.append(InputMediaPhoto(
+                    ________________media=media_data,
+                    ________________caption=caption,
+                    ________________parse_mode='HTML' if caption else None
+                ________________))
+                ________________logger.info(f"📄 Processed unknown media type {i+1} as photo: {len(media_data)} bytes")
+________________        
+    ________________except Exception as media_error:
+        ________________logger.error(f"Error processing media {url}: {media_error}")
+        ________________continue
+________________    
+    ________________# เพิ่มเวลารอระหว่างการประมวลผล media
+    ________________await asyncio.sleep(4)
+________________
+________________def detect_media_type(self, media_data: bytes, url: str) -> str:
+    ________________"""ตรวจสอบประเภทของ media จาก content และ URL"""
+    ________________try:
+        ________________# ตรวจสอบจาก magic bytes ก่อน
+        ________________if media_data[:4] == b'\xff\xd8\xff\xe0' or media_data[:4] == b'\xff\xd8\xff\xe1':
+            ________________return 'image/jpeg'
+        ________________elif media_data[:8] == b'\x89PNG\r\n\x1a\n':
+            ________________return 'image/png'
+        ________________elif media_data[:6] == b'GIF87a' or media_data[:6] == b'GIF89a':
+            ________________return 'image/gif'
+        ________________elif media_data[:4] == b'WEBP' or media_data[8:12] == b'WEBP':
+            ________________return 'image/webp'
+        ________________elif media_data[:4] == b'\x00\x00\x00\x18' or media_data[:4] == b'\x00\x00\x00\x20':
+            ________________return 'video/mp4'
+        ________________elif media_data[:11] == b'\x00\x00\x00\x00ftypqt':
+            ________________return 'video/quicktime'
+________________        
+        ________________# ตรวจสอบจาก URL extension
+        ________________url_lower = url.lower()
+        ________________if any(ext in url_lower for ext in ['.jpg', '.jpeg']):
+            ________________return 'image/jpeg'
+        ________________elif '.png' in url_lower:
+            ________________return 'image/png'
+        ________________elif '.gif' in url_lower:
+            ________________return 'image/gif'
+        ________________elif '.webp' in url_lower:
+            ________________return 'image/webp'
+        ________________elif any(ext in url_lower for ext in ['.mp4', '.mov', '.avi']):
+            ________________return 'video/mp4'
+________________        
+        ________________# default เป็น image
+        ________________return 'image/jpeg'
+________________        
+    ________________except Exception as e:
+        ________________logger.error(f"Error detecting media type: {e}")
+        ________________return 'image/jpeg'  # fallback
                 
                 # ส่ง media group ถ้ามีไฟล์
                 if media_files:
