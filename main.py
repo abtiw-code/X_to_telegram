@@ -1214,113 +1214,38 @@ class XTelegramBot:
             return True  # ให้ผ่านไปเมื่อเกิดข้อผิดพลาดในการตรวจสอบ
         
     async def download_media(self, url: str) -> Optional[bytes]:
-        """Download media with high quality support - แก้ไขเพื่อคุณภาพเท่าต้นฉบับ"""
+        """Download media with improved timeout and validation"""
         try:
-            # ปรับ URL ให้เป็น high quality
-            high_quality_url = self.get_high_quality_media_url(url)
-            
-            timeout = aiohttp.ClientTimeout(total=120)  # เพิ่มเวลา timeout สำหรับไฟล์คุณภาพสูง
+            timeout = aiohttp.ClientTimeout(total=60)
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'image/*, video/*, */*;q=0.8',
-                'Referer': 'https://twitter.com/',
-                'Accept-Encoding': 'identity',  # ไม่บีบอัดเพื่อคุณภาพ
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'image/*,video/*,*/*;q=0.8'
             }
             
             async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-                # ลองดาวน์โหลด high quality ก่อน
-                async with session.get(high_quality_url) as response:
+                async with session.get(url) as response:
                     if response.status == 200:
                         # ตรวจสอบขนาดไฟล์ก่อนดาวน์โหลด
                         content_length = response.headers.get('content-length')
-                        if content_length and int(content_length) > 200 * 1024 * 1024:  # 200MB limit
-                            logger.warning(f"High quality media too large: {content_length} bytes, trying original")
-                            # fallback ไป original URL
-                            async with session.get(url) as fallback_response:
-                                if fallback_response.status == 200:
-                                    content = await fallback_response.read()
-                                    if content and len(content) > 100:
-                                        logger.info(f"✅ Downloaded fallback media: {len(content)} bytes from {url}")
-                                        return content
+                        if content_length and int(content_length) > 100 * 1024 * 1024:  # 100MB limit
+                            logger.warning(f"Media too large: {content_length} bytes")
                             return None
                         
                         content = await response.read()
-                        if content and len(content) > 100:
-                            logger.info(f"✅ Downloaded HIGH QUALITY media: {len(content)} bytes from {high_quality_url}")
+                        if content and len(content) > 100:  # ต้องมีขนาดมากกว่า 100 bytes
+                            logger.info(f"✅ Downloaded media: {len(content)} bytes from {url}")
                             return content
                         else:
-                            logger.warning(f"High quality media too small: {len(content) if content else 0} bytes")
-                    
-                    # ถ้า high quality ไม่ได้ ลอง original
-                    elif response.status == 404:
-                        logger.info(f"High quality not available, trying original URL")
-                        async with session.get(url) as fallback_response:
-                            if fallback_response.status == 200:
-                                content = await fallback_response.read()
-                                if content and len(content) > 100:
-                                    logger.info(f"✅ Downloaded original media: {len(content)} bytes from {url}")
-                                    return content
+                            logger.warning(f"Media too small or empty: {len(content) if content else 0} bytes")
                     else:
-                        logger.warning(f"HTTP {response.status} for high quality URL: {high_quality_url}")
+                        logger.warning(f"HTTP {response.status} for media URL: {url}")
         
         except asyncio.TimeoutError:
             logger.warning(f"Media download timeout: {url}")
-            # ลองดาวน์โหลด original แบบ quick timeout
-            try:
-                timeout = aiohttp.ClientTimeout(total=30)
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.get(url) as response:
-                        if response.status == 200:
-                            content = await response.read()
-                            if content and len(content) > 100:
-                                logger.info(f"✅ Downloaded media (quick fallback): {len(content)} bytes")
-                                return content
-            except:
-                pass
-                
         except Exception as e:
             logger.error(f"Media download error for {url}: {e}")
         
         return None
-    
-    def get_high_quality_media_url(self, url: str) -> str:
-        """แปลง URL เป็น high quality version"""
-        try:
-            # สำหรับรูปภาพ Twitter
-            if 'pbs.twimg.com' in url and '/media/' in url:
-                # ลบ format parameters ที่จำกัดคุณภาพ
-                base_url = url.split('?')[0]  # ลบ query parameters
-                
-                # เพิ่ม format สำหรับ high quality
-                if not base_url.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                    base_url += '.jpg'  # default format
-                
-                # เพิ่ม query parameters สำหรับคุณภาพสูง
-                high_quality_url = f"{base_url}?format=jpg&name=4096x4096"
-                logger.info(f"🔍 Converted to high quality: {url} -> {high_quality_url}")
-                return high_quality_url
-            
-            # สำหรับ video preview images
-            elif 'video_thumb' in url or 'preview_image' in url:
-                # ลองแปลงเป็น high quality format
-                if '?format=' in url:
-                    base_url = url.split('?format=')[0]
-                    high_quality_url = f"{base_url}?format=jpg&name=large"
-                    return high_quality_url
-            
-            # สำหรับ URL อื่นๆ ที่มี size parameters
-            elif ('?format=' in url or '&name=' in url) and 'twimg.com' in url:
-                # แทนที่ด้วย high quality parameters
-                base_url = url.split('?')[0]
-                high_quality_url = f"{base_url}?format=jpg&name=4096x4096"
-                return high_quality_url
-            
-            # ถ้าไม่ตรงเงื่อนไขใด ให้คืน original URL
-            return url
-            
-        except Exception as e:
-            logger.error(f"Error converting to high quality URL: {e}")
-            return url
     
     async def send_telegram_message(self, content: str, media_urls: List[str] = None, tweet_id: str = None):
         """Send message to Telegram - ป้องกันข้อความซ้ำ 100%"""
@@ -1343,86 +1268,32 @@ class XTelegramBot:
                 logger.info(f"Processing {len(media_urls)} media URLs for tweet {tweet_id}")
                 media_files = []
                 
-                for i, url in enumerate(media_urls[:5]):  # จำกัด 5 ไฟล์
+                for i, url in enumerate(media_urls[:5]):
                     try:
                         media_data = await self.download_media(url)
                         if media_data:
                             caption = content[:1024] if i == 0 else None
-            
-                            # ตรวจสอบประเภทไฟล์จาก content และ URL
-                            content_type = self.detect_media_type(media_data, url)
                             
-                            if content_type.startswith('image/'):
-                                media_files.append(InputMediaPhoto(
-                                    media=media_data,
-                                    caption=caption,
-                                    parse_mode='HTML' if caption else None,
-                                    has_spoiler=False  # ไม่ blur
-                                ))
-                                logger.info(f"📸 Processed HIGH QUALITY image {i+1}: {len(media_data)} bytes")
-                                
-                            elif content_type.startswith('video/'):
-                                media_files.append(InputMediaVideo(
-                                    media=media_data,
-                                    caption=caption,
-                                    parse_mode='HTML' if caption else None,
-                                    supports_streaming=True,  # รองรับ streaming
-                                    has_spoiler=False
-                                ))
-                                logger.info(f"🎥 Processed HIGH QUALITY video {i+1}: {len(media_data)} bytes")
-                                
-                            else:
-                                # สำหรับไฟล์ที่ไม่ระบุประเภท ลองส่งเป็นรูป
+                            if any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
                                 media_files.append(InputMediaPhoto(
                                     media=media_data,
                                     caption=caption,
                                     parse_mode='HTML' if caption else None
                                 ))
-                                logger.info(f"📄 Processed unknown media type {i+1} as photo: {len(media_data)} bytes")
+                            elif any(ext in url.lower() for ext in ['.mp4', '.mov', '.avi']):
+                                media_files.append(InputMediaVideo(
+                                    media=media_data,
+                                    caption=caption,
+                                    parse_mode='HTML' if caption else None
+                                ))
+                            
+                            logger.info(f"Successfully processed media {i+1}/{len(media_urls)}")
                         
                     except Exception as media_error:
                         logger.error(f"Error processing media {url}: {media_error}")
                         continue
                     
-                    # เพิ่มเวลารอระหว่างการประมวลผล media
-                    await asyncio.sleep(4)
-                
-                def detect_media_type(self, media_data: bytes, url: str) -> str:
-                    """ตรวจสอบประเภทของ media จาก content และ URL"""
-                    try:
-                        # ตรวจสอบจาก magic bytes ก่อน
-                        if media_data[:4] == b'\xff\xd8\xff\xe0' or media_data[:4] == b'\xff\xd8\xff\xe1':
-                            return 'image/jpeg'
-                        elif media_data[:8] == b'\x89PNG\r\n\x1a\n':
-                            return 'image/png'
-                        elif media_data[:6] == b'GIF87a' or media_data[:6] == b'GIF89a':
-                            return 'image/gif'
-                        elif media_data[:4] == b'WEBP' or media_data[8:12] == b'WEBP':
-                            return 'image/webp'
-                        elif media_data[:4] == b'\x00\x00\x00\x18' or media_data[:4] == b'\x00\x00\x00\x20':
-                            return 'video/mp4'
-                        elif media_data[:11] == b'\x00\x00\x00\x00ftypqt':
-                            return 'video/quicktime'
-                        
-                        # ตรวจสอบจาก URL extension
-                        url_lower = url.lower()
-                        if any(ext in url_lower for ext in ['.jpg', '.jpeg']):
-                            return 'image/jpeg'
-                        elif '.png' in url_lower:
-                            return 'image/png'
-                        elif '.gif' in url_lower:
-                            return 'image/gif'
-                        elif '.webp' in url_lower:
-                            return 'image/webp'
-                        elif any(ext in url_lower for ext in ['.mp4', '.mov', '.avi']):
-                            return 'video/mp4'
-                        
-                        # default เป็น image
-                        return 'image/jpeg'
-                        
-                    except Exception as e:
-                        logger.error(f"Error detecting media type: {e}")
-                        return 'image/jpeg'  # fallback
+                    await asyncio.sleep(1)
                 
                 # ส่ง media group ถ้ามีไฟล์
                 if media_files:
@@ -1539,16 +1410,7 @@ class XTelegramBot:
                         'referenced_tweets.id',
                         'referenced_tweets.id.author_id'
                     ],
-                    'media_fields': [
-                        'url', 
-                        'type', 
-                        'preview_image_url', 
-                        'alt_text',
-                        'height',
-                        'width',
-                        'public_metrics',
-                        'variants'
-                    ],
+                    'media_fields': ['url', 'type', 'preview_image_url', 'alt_text'],
                 }
             
                 start_time = datetime.now(pytz.utc) - timedelta(hours=1) #เช็กย้อนหลัง 1ชั่วโมง
@@ -1770,32 +1632,9 @@ class XTelegramBot:
                             for media in includes['media']:
                                 if media.media_key == media_key:
                                     if media.type == 'photo' and hasattr(media, 'url'):
-                                        # ใช้ high quality URL สำหรับรูปภาพ
-                                        high_quality_url = self.get_high_quality_media_url(media.url)
-                                        media_urls.append(high_quality_url)
-                                        logger.info(f"📸 Added high quality photo: {high_quality_url}")
-                                        
-                                    elif media.type == 'video':
-                                        # สำหรับวิดีโอ ลองใช้ URL ที่ดีที่สุดที่มี
-                                        video_url = None
-                                        
-                                        # ลองใช้ video URL ถ้ามี (แต่ Twitter API มักไม่ให้)
-                                        if hasattr(media, 'url') and media.url:
-                                            video_url = media.url
-                                        # ใช้ preview image คุณภาพสูงแทน
-                                        elif hasattr(media, 'preview_image_url') and media.preview_image_url:
-                                            video_url = self.get_high_quality_media_url(media.preview_image_url)
-                                        
-                                        if video_url:
-                                            media_urls.append(video_url)
-                                            logger.info(f"🎥 Added video/preview: {video_url}")
-                                            
-                                    elif media.type == 'animated_gif' and hasattr(media, 'url'):
-                                        # GIF ใช้ URL ต้นฉบับ
                                         media_urls.append(media.url)
-                                        logger.info(f"🎬 Added GIF: {media.url}")
-    
-                logger.info(f"📊 Total high quality media URLs: {len(media_urls)}")
+                                    elif media.type == 'video' and hasattr(media, 'preview_image_url'):
+                                        media_urls.append(media.preview_image_url)
                 
                 # 🔥 แก้ไขหลัก 3: กรองรวม media ก่อนแปลภาษา
                 should_skip_with_media, skip_reason_media = await self.should_skip_post(
