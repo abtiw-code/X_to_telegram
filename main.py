@@ -1079,7 +1079,7 @@ class XTelegramBot:
                 # คำศัพท์การเงิน
                 "bull market", "bear market", "bullish", "bearish",
                 "market cap", "volume", "liquidity", "volatility", "FUD", "ATH", "ATL", "whale", "diamond hands",
-                "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump",
+                "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump", "Funding Rate", "Open Interest",
                 "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation"
                 
                 # หน่วยและตัวเลข
@@ -1100,7 +1100,7 @@ class XTelegramBot:
                 'messages': [
                     {
                         'role': 'system',
-                        'content': '''คุณเป็นนักแปลข่าวคริปโตและการเงินมืออาชีพ แปลเป็นภาษาไทยที่เข้าใจง่าย ใช้คำศัพท์ที่คนไทยคุ้นเคย 
+                        'content': '''คุณเป็นนักแปลข่าวคริปโตและการเงินมืออาชีพ แปลเป็นภาษาไทยที่เข้าใจง่าย 
                         === กฎการแปล ===
                         1. **ห้ามแปลคำเหล่านี้โดยเด็ดขาด**: "{preserve_list}"
                         2. ชื่อบุคคล, ชื่อบริษัท, ชื่อแพลตฟอร์ม ให้เก็บเป็นภาษาอังกฤษ
@@ -1113,6 +1113,7 @@ class XTelegramBot:
                         - "Ethereum DeFi protocol" → "โปรโตคอล DeFi ของ Ethereum" 
                         - "bullish trend continues" → "เทรนด์ bullish ยังคงดำเนินต่อไป"
                         - "DeFi protocols are gaining momentum" → "โปรโตคอล DeFi กำลังได้รับความนิยมเพิ่มขึ้น"
+                        - "Whale Open long positions" → "วาฬได้เปิดสถานะ long positions"
                         
                         แปลเฉพาะข้อความ ไม่ต้องใส่คำอธิบายเพิ่มเติม:'''
                     },
@@ -1121,7 +1122,7 @@ class XTelegramBot:
                 'max_tokens': 4000,
                 'temperature': 0.1,
                 'top_p': 1.0,
-                'stream': False
+                # 'stream': False
             }
             
             timeout = aiohttp.ClientTimeout(total=60)
