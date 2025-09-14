@@ -1068,107 +1068,103 @@ class XTelegramBot:
         for attempt in range(max_retries):
             logger.info(f"Translation attempt {attempt + 1}/{max_retries} for text: {text[:50]}...")
         
-        # if text_hash in self.translation_cache:
-        #     logger.info(f"Using cached translation for hash: {text_hash}")
-        #     return self.translation_cache[text_hash]
-        
-        try:
-            headers = {
-                'Authorization': f'Bearer {self.typhoon_api_key}',
-                'Content-Type': 'application/json'
-            }
-
-             # รายการคำที่ไม่ควรแปล (ขยายเพิ่มเติม)
-            preserve_terms = [
-                # คำศัพท์การเงิน
-                "bull market", "bear market", "bullish", "bearish",
-                "market cap", "volume", "liquidity", "volatility", "FUD", "ATH", "ATL", "whale", "diamond hands",
-                "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump", "Funding Rate", "Open Interest",
-                "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation"
-                
-                # หน่วยและตัวเลข
-                "USD", "EUR", "GBP", "JPY", "CNY", "THB", "million", "billion", "trillion",
-                "k", "M", "B", "T", "%", "$", "€", "£", "¥", "₹", "₿", "฿",
-
-                # Technical terms
-                "API", "DApp", "smart contract", "blockchain", "hash rate",
-                "mining", "staking", "yield farming", "liquidity pool"
-                
-            ]
+            try:
+                headers = {
+                    'Authorization': f'Bearer {self.typhoon_api_key}',
+                    'Content-Type': 'application/json'
+                }
     
-            # สร้าง list คำที่ต้องอนุรักษ์ในรูปแบบ case-insensitive
-            preserve_list = '", "'.join(preserve_terms)
-    
-            payload = {
-                'model': 'typhoon-v2.1-12b-instruct',
-                'messages': [
-                    {
-                        'role': 'system',
-                        'content': '''คุณเป็นนักแปลข่าวคริปโตและการเงินมืออาชีพ แปลเป็นภาษาไทยที่เข้าใจง่าย ต้องแปลเป็นภาษาไทยทุกครั้ง
-                        === กฎการแปล ===
-                        1. **ห้ามแปลคำเหล่านี้โดยเด็ดขาด**: "{preserve_list}"
-                        2. ชื่อบุคคล, ชื่อบริษัท, ชื่อแพลตฟอร์ม ให้เก็บเป็นภาษาอังกฤษ
-                        3. ตัวเลข, เปอร์เซ็นต์, สกุลเงิน ให้เก็บเป็นภาษาอังกฤษ
-                        4. คำศัพท์เทคนิคด้านคริปโตและการเงิน ให้เก็บเป็นภาษาอังกฤษ
-                        5. ต้องรักษารูปแบบการเว้นบรรทัด (newline) และย่อหน้าให้เหมือนต้นฉบับ
-                        
-                        === ตัวอย่าง ===
-                        - "Bitcoin hits $50,000" → "Bitcoin แตะ $50,000"
-                        - "Ethereum DeFi protocol" → "โปรโตคอล DeFi ของ Ethereum" 
-                        - "bullish trend continues" → "เทรนด์ bullish ยังคงดำเนินต่อไป"
-                        - "DeFi protocols are gaining momentum" → "โปรโตคอล DeFi กำลังได้รับความนิยมเพิ่มขึ้น"
-                        - "Whale Open long positions" → "วาฬได้เปิดสถานะ long positions"
-                        
-                        แปลเฉพาะข้อความ ไม่ต้องใส่คำอธิบายเพิ่มเติม:'''
-                    },
-                    {'role': 'user', 'content': text}
-                ],
-                'max_tokens': 4000,
-                'temperature': 0.1,
-                'top_p': 1.0,
-                # 'stream': False
-            }
-            
-            timeout = aiohttp.ClientTimeout(total=60)
-            
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    'https://api.opentyphoon.ai/v1/chat/completions',
-                    headers=headers,
-                    json=payload
-                ) as response:
+                 # รายการคำที่ไม่ควรแปล (ขยายเพิ่มเติม)
+                preserve_terms = [
+                    # คำศัพท์การเงิน
+                    "bull market", "bear market", "bullish", "bearish",
+                    "market cap", "volume", "liquidity", "volatility", "FUD", "ATH", "ATL", "whale", "diamond hands",
+                    "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump", "Funding Rate", "Open Interest",
+                    "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation"
                     
-                    if response.status == 200:
-                        data = await response.json()
-                        if 'choices' in data and len(data['choices']) > 0:
-                            translated = data['choices'][0]['message']['content'].strip()
+                    # หน่วยและตัวเลข
+                    "USD", "EUR", "GBP", "JPY", "CNY", "THB", "million", "billion", "trillion",
+                    "k", "M", "B", "T", "%", "$", "€", "£", "¥", "₹", "₿", "฿",
+    
+                    # Technical terms
+                    "API", "DApp", "smart contract", "blockchain", "hash rate",
+                    "mining", "staking", "yield farming", "liquidity pool"
+                    
+                ]
+    
+                # สร้าง list คำที่ต้องอนุรักษ์ในรูปแบบ case-insensitive
+                preserve_list = '", "'.join(preserve_terms)
+        
+                payload = {
+                    'model': 'typhoon-v2.1-12b-instruct',
+                    'messages': [
+                        {
+                            'role': 'system',
+                            'content': '''คุณเป็นนักแปลข่าวคริปโตและการเงินมืออาชีพ แปลเป็นภาษาไทยที่เข้าใจง่าย ต้องแปลเป็นภาษาไทยทุกครั้ง
+                            === กฎการแปล ===
+                            1. **ห้ามแปลคำเหล่านี้โดยเด็ดขาด**: "{preserve_list}"
+                            2. ชื่อบุคคล, ชื่อบริษัท, ชื่อแพลตฟอร์ม ให้เก็บเป็นภาษาอังกฤษ
+                            3. ตัวเลข, เปอร์เซ็นต์, สกุลเงิน ให้เก็บเป็นภาษาอังกฤษ
+                            4. คำศัพท์เทคนิคด้านคริปโตและการเงิน ให้เก็บเป็นภาษาอังกฤษ
+                            5. ต้องรักษารูปแบบการเว้นบรรทัด (newline) และย่อหน้าให้เหมือนต้นฉบับ
+                        
+                            === ตัวอย่าง ===
+                            - "Bitcoin hits $50,000" → "Bitcoin แตะ $50,000"
+                            - "Ethereum DeFi protocol" → "โปรโตคอล DeFi ของ Ethereum" 
+                            - "bullish trend continues" → "เทรนด์ bullish ยังคงดำเนินต่อไป"
+                            - "DeFi protocols are gaining momentum" → "โปรโตคอล DeFi กำลังได้รับความนิยมเพิ่มขึ้น"
+                            - "Whale Open long positions" → "วาฬได้เปิดสถานะ long positions"
+                            
+                            แปลเฉพาะข้อความ ไม่ต้องใส่คำอธิบายเพิ่มเติม:'''
+                        },
+                        {'role': 'user', 'content': text}
+                    ],
+                    'max_tokens': 4000,
+                    'temperature': 0.1,
+                    'top_p': 1.0,
+                    # 'stream': False
+                }
                 
-                            # ตรวจสอบคุณภาพการแปล
-                            if self.is_translation_valid(text, translated):
-                                logger.info(f"✅ Translation successful on attempt {attempt + 1}")
-                                return translated
-                            elif attempt < max_retries - 1:
-                                logger.warning(f"⚠️ Translation failed validation, retrying...")
+                timeout = aiohttp.ClientTimeout(total=60)
+                
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        'https://api.opentyphoon.ai/v1/chat/completions',
+                        headers=headers,
+                        json=payload
+                    ) as response:
+                        
+                        if response.status == 200:
+                            data = await response.json()
+                            if 'choices' in data and len(data['choices']) > 0:
+                                translated = data['choices'][0]['message']['content'].strip()
+                    
+                                # ตรวจสอบคุณภาพการแปล
+                                if self.is_translation_valid(text, translated):
+                                    logger.info(f"✅ Translation successful on attempt {attempt + 1}")
+                                    return translated
+                                elif attempt < max_retries - 1:
+                                    logger.warning(f"⚠️ Translation failed validation, retrying...")
+                                    await asyncio.sleep(2)
+                                    continue
+                                else:
+                                    logger.warning(f"⚠️ Final attempt - using result anyway")
+                                    return translated
+                        else:
+                            logger.error(f"Translation API error: {response.status}")
+                            if attempt < max_retries - 1:
                                 await asyncio.sleep(2)
                                 continue
-                            else:
-                                logger.warning(f"⚠️ Final attempt - using result anyway")
-                                return translated
-                    else:
-                        logger.error(f"Translation API error: {response.status}")
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(2)
-                            continue
-                        return text
-
-        except Exception as e:
-            logger.error(f"Translation attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2)
-                continue
-            return text
+                            return text
     
-    return text
+            except Exception as e:
+                logger.error(f"Translation attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                    continue
+                return text
+        
+        return text
 
     def is_translation_valid(self, original: str, translated: str) -> bool:
         """ตรวจสอบคุณภาพการแปล"""
