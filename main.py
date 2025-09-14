@@ -1058,12 +1058,16 @@ class XTelegramBot:
             self.update_account_stats(account_id, False)
             return None
     
-    async def translate_text(self, text: str) -> str:
+    async def translate_text(self, text: str, max_retries: int = 3) -> str:
         """Translate text with caching"""
         if not text or not text.strip():
             return text
     
         text_hash = hash(text)
+        # ลอง 3 ครั้ง ถ้าครั้งแรกไม่สำเร็จ
+        for attempt in range(max_retries):
+            logger.info(f"Translation attempt {attempt + 1}/{max_retries} for text: {text[:50]}...")
+        
         # if text_hash in self.translation_cache:
         #     logger.info(f"Using cached translation for hash: {text_hash}")
         #     return self.translation_cache[text_hash]
@@ -1100,7 +1104,7 @@ class XTelegramBot:
                 'messages': [
                     {
                         'role': 'system',
-                        'content': '''คุณเป็นนักแปลข่าวคริปโตและการเงินมืออาชีพ แปลเป็นภาษาไทยที่เข้าใจง่าย 
+                        'content': '''คุณเป็นนักแปลข่าวคริปโตและการเงินมืออาชีพ แปลเป็นภาษาไทยที่เข้าใจง่าย ต้องแปลเป็นภาษาไทยทุกครั้ง
                         === กฎการแปล ===
                         1. **ห้ามแปลคำเหล่านี้โดยเด็ดขาด**: "{preserve_list}"
                         2. ชื่อบุคคล, ชื่อบริษัท, ชื่อแพลตฟอร์ม ให้เก็บเป็นภาษาอังกฤษ
@@ -1138,37 +1142,33 @@ class XTelegramBot:
                         data = await response.json()
                         if 'choices' in data and len(data['choices']) > 0:
                             translated = data['choices'][0]['message']['content'].strip()
-                            
+                
                             # ตรวจสอบคุณภาพการแปล
                             if self.is_translation_valid(text, translated):
-                                # จำกัดขนาด cache
-                                if len(self.translation_cache) > self.max_cache_size:
-                                    # เก็บแค่ 25 รายการล่าสุด
-                                    cache_items = list(self.translation_cache.items())
-                                    self.translation_cache = dict(cache_items[-25:])
-                                
-                                self.translation_cache[text_hash] = translated
-                                logger.info(f"Translation successful: {len(text)} chars -> {len(translated)} chars")
+                                logger.info(f"✅ Translation successful on attempt {attempt + 1}")
                                 return translated
+                            elif attempt < max_retries - 1:
+                                logger.warning(f"⚠️ Translation failed validation, retrying...")
+                                await asyncio.sleep(2)
+                                continue
                             else:
-                                logger.warning(f"Translation quality check failed, using original text")
-                                self.translation_cache[text_hash] = text
-                                return text
-                        else:
-                            logger.error("No choices in API response")
-                            return text
+                                logger.warning(f"⚠️ Final attempt - using result anyway")
+                                return translated
                     else:
                         logger.error(f"Translation API error: {response.status}")
-                        error_text = await response.text()
-                        logger.error(f"Error response: {error_text}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2)
+                            continue
                         return text
 
-        except asyncio.TimeoutError:
-            logger.error("Translation timeout")
-            return text
         except Exception as e:
-            logger.error(f"Translation error: {e}")
+            logger.error(f"Translation attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+                continue
             return text
+    
+    return text
 
     def is_translation_valid(self, original: str, translated: str) -> bool:
         """ตรวจสอบคุณภาพการแปล"""
@@ -1179,16 +1179,24 @@ class XTelegramBot:
                 return False
             
             # ตรวจสอบว่าแปลจริงหรือคืนข้อความเดิม
-            if translated.strip() == original.strip():
-                logger.info("Translation returned original text (might be intentional)")
-                return True
+            if translated.strip().lower() == original.strip().lower():
+                # ตรวจสอบว่าเป็นภาษาอังกฤษหรือไม่
+                english_chars = sum(1 for c in original if ord(c) < 128 and c.isalpha())
+                total_chars = sum(1 for c in original if c.isalpha())
+    
+                if total_chars > 10 and english_chars / total_chars > 0.7:
+                    logger.warning("Translation returned same English text - should be translated")
+                    return False
+                else:
+                    logger.info("Translation kept original (might be Thai already)")
+                    return True
             
             # ตรวจสอบความยาวผิดปกติ
-            if len(translated) > len(original) * 3:
+            if len(translated) > len(original) * 4:
                 logger.warning(f"Translation too long: {len(translated)} vs {len(original)}")
                 return False
             
-            if len(translated) < len(original) * 0.3:
+            if len(translated) < len(original) * 0.2:
                 logger.warning(f"Translation too short: {len(translated)} vs {len(original)}")
                 return False
             
@@ -1634,8 +1642,8 @@ class XTelegramBot:
                                 if media.media_key == media_key:
                                     if media.type == 'photo' and hasattr(media, 'url'):
                                         media_urls.append(media.url)
-                                    elif media.type == 'video' and hasattr(media, 'preview_image_url'):
-                                        media_urls.append(media.preview_image_url)
+                                    elif media.type == 'video' and hasattr(media, 'url'):
+                                        media_urls.append(media.url)
                 
                 # 🔥 แก้ไขหลัก 3: กรองรวม media ก่อนแปลภาษา
                 should_skip_with_media, skip_reason_media = await self.should_skip_post(
@@ -1662,7 +1670,16 @@ class XTelegramBot:
                 logger.info(f"✅ Tweet {tweet.id} passed all filters, proceeding to translate...")
                 
                 # แปลภาษาหลังจากกรองเรียบร้อยแล้ว
+                logger.info(f"🔤 กำลังแปลข้อความ: '{content[:100]}...'")
                 translated = await self.translate_text(content)
+                logger.info(f"🔤 ผลการแปล: '{translated[:100]}...'")
+
+                # ตรวจสอบว่าแปลจริงหรือไม่
+                if translated.lower().strip() == content.lower().strip():
+                    logger.warning(f"⚠️ Tweet {tweet.id} ไม่ได้ถูกแปล (เหมือนต้นฉบับ)")
+                else:
+                    logger.info(f"✅ Tweet {tweet.id} แปลสำเร็จแล้ว")
+                
                 thai_time = self.get_thai_time(tweet.created_at)
 
                 # ลบลิงก์ออกจากข้อความแปล แต่เก็บการเว้นบรรทัด/ย่อหน้าไว้
