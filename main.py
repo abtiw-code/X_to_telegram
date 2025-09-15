@@ -291,14 +291,11 @@ class XTelegramBot:
         """ตรวจสอบว่าโพสมี emoji อย่างเดียวหรือไม่."""
     
         try:
-            # ลบ whitespace, newline ทุกประเภทออก
             clean_text = re.sub(r'\s+', '', text.strip())
             
-            # ถ้าข้อความว่าง return False
             if not clean_text:
                 return False
             
-            # Emoji pattern - รวม Unicode emoji ranges ต่างๆ
             emoji_pattern = re.compile(
                 "["
                 "\U0001F600-\U0001F64F"  # emoticons
