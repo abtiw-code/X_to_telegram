@@ -479,14 +479,9 @@ class XTelegramBot:
             text_lower = text.lower().strip()
             logger.info(f"🔍 Filtering text (first 100 chars): '{text[:100]}...'")
 
-            if "⤵️" in text:
-                clean_text = re.sub(r'\s+', '', text.strip())
-                char_count = len(clean_text)
-    
-                if char_count <= 20:
-                    logger.info(f"🚫 Blocked: ⤵️ with {char_count} chars (≤15)")
-                    logger.info(f"📝 Text: '{text}'")
-                    return True, "arrow_short_15chars"
+            if "⤵️" in text and len(text.strip()) < 15:
+                logger.info(f"🚫 Blocked: too short with arrow symbol ⤵️ (len={len(text.strip())})")
+                return True, "short_with_arrow"
             
             # 🔥 แก้ไขหลัก 5: เพิ่มการ log ทุกการตรวจสอบ
             blocked_phrases = [
@@ -555,10 +550,9 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
-            # ตรวจสอบข้อความสั้นเกินไป
-            if char_count < 20:
-                logger.info(f"🚫 Blocked: too short content ({char_count} meaningful chars)")
-                return True, "short_meaningful_content"
+            if len(text_clean) < 15:
+                logger.info(f"🚫 Blocked: too short ({len(text_clean)} chars)")
+                return True, "short_content_with_link_emoji"
     
             logger.info("✅ All checks passed - POST ALLOWED")
             return False, "normal"
@@ -1114,7 +1108,7 @@ class XTelegramBot:
                             4. คำศัพท์เทคนิคด้านคริปโตและการเงิน ให้เก็บเป็นภาษาอังกฤษ
                             5. ต้องรักษารูปแบบการเว้นบรรทัด (newline) และย่อหน้าให้เหมือนต้นฉบับ
                             6. ห้ามแปล long positions,short positions,leverage,liquidation,OG
-                        
+                            
                             === ตัวอย่าง ===
                             - "Bitcoin hits $50,000" → "Bitcoin แตะ $50,000"
                             - "Ethereum DeFi protocol" → "โปรโตคอล DeFi ของ Ethereum" 
@@ -1645,8 +1639,8 @@ class XTelegramBot:
                                 if media.media_key == media_key:
                                     if media.type == 'photo' and hasattr(media, 'url'):
                                         media_urls.append(media.url)
-                                    elif media.type == 'video' and hasattr(media, 'preview_image_url'):
-                                        media_urls.append(media.preview_image_url)
+                                    elif media.type == 'video' and hasattr(media, 'url'):
+                                        media_urls.append(media.url)
                 
                 # 🔥 แก้ไขหลัก 3: กรองรวม media ก่อนแปลภาษา
                 should_skip_with_media, skip_reason_media = await self.should_skip_post(
