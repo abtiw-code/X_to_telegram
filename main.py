@@ -476,7 +476,7 @@ class XTelegramBot:
             text_lower = text.lower().strip()
             logger.info(f"🔍 Filtering text (first 100 chars): '{text[:100]}...'")
 
-            if "⤵️" in text and len(text.strip()) < 15:
+            if "⤵️" in text and len(text.strip()) < 25:
                 logger.info(f"🚫 Blocked: too short with arrow symbol ⤵️ (len={len(text.strip())})")
                 return True, "short_with_arrow"
             
@@ -519,6 +519,8 @@ class XTelegramBot:
                 "kcex.com/register",
                 "7-day trial",
                 "Register here",
+                "Sign Up Here",
+                "Get $1,000 today",
                 "0% spot fees"
             ]
             
@@ -547,7 +549,7 @@ class XTelegramBot:
             text_clean = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]+', '', text_clean)
             text_clean = re.sub(r'[^\w\u0E00-\u0E7F]', '', text_clean)
             
-            if len(text_clean) < 15:
+            if len(text_clean) < 20:
                 logger.info(f"🚫 Blocked: too short ({len(text_clean)} chars)")
                 return True, "short_content_with_link_emoji"
     
@@ -961,8 +963,8 @@ class XTelegramBot:
             "t.co/" in text and text.rstrip().endswith("…")  # Link + ellipsis
         ]
         
-        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 290 ตัวอักษร)
-        suspicious_length = len(text) >= 290 and any([
+        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 295 ตัวอักษร)
+        suspicious_length = len(text) >= 295 and any([
             text.rstrip().endswith("…"),
             text.rstrip().endswith("..."),
             not text.rstrip().endswith("."),  # ไม่จบด้วยจุด
@@ -1077,7 +1079,7 @@ class XTelegramBot:
                     "bull market", "bear market", "bullish", "bearish",
                     "market cap", "volume", "liquidity", "volatility", "FUD", "ATH", "ATL", "whale", "diamond hands",
                     "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump", "Funding Rate", "Open Interest",
-                    "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation", "OG"
+                    "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation", "OG", "Peer to Peer", "Blockchain", "Onchain", "Offchain", "Stablecoin"
                     
                     # หน่วยและตัวเลข
                     "USD", "EUR", "GBP", "JPY", "CNY", "THB", "million", "billion", "trillion",
@@ -1636,9 +1638,9 @@ class XTelegramBot:
                                 if media.media_key == media_key:
                                     if media.type == 'photo' and hasattr(media, 'url'):
                                         media_urls.append(media.url)
-                                    elif media.type == 'video' and hasattr(media, 'url'):
-                                        media_urls.append(media.url)
-                
+                                    elif media.type == 'video' and hasattr(media, 'preview_image_url'):
+                                        media_urls.append(media.preview_image_url)
+
                 # 🔥 แก้ไขหลัก 3: กรองรวม media ก่อนแปลภาษา
                 should_skip_with_media, skip_reason_media = await self.should_skip_post(
                     content, media_urls, includes=includes
