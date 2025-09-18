@@ -625,9 +625,45 @@ class XTelegramBot:
             return url
     
     async def is_self_interaction(self, tweet, client, account_id) -> tuple:
-        """ตรวจสอบว่าเป็นการโต้ตอบกับตัวเองหรือไม่ - ปรับปรุงแล้ว (Self-mention Priority)"""
+        """ตรวจสอบว่าเป็นการโต้ตอบกับตัวเองหรือไม่ - ปรับปรุงแล้ว"""
         try:
-            # ============= PRIORITY 1: ตรวจสอบ Self-Mention ก่อนเสมอ =============
+            # ============= PRIORITY 0: ตรวจสอบ Self-Retweet ก่อนทุกอย่าง =============
+            is_rt, rt_type = self.is_self_retweet_comprehensive(tweet)
+            
+            if is_rt:
+                if rt_type == 'self_retweet_legacy_comprehensive':
+                    # ตรวจสอบว่าเป็น RT ตัวเองจริงหรือไม่ (จาก text pattern)
+                    logger.warning(f"🚫 CONFIRMED self-RT (legacy pattern): {tweet.id}")
+                    return True, 'self_retweet_legacy', self.target_username
+                
+                elif rt_type == 'self_retweet_modern_need_check':
+                    # ต้องเช็ค author ของ original tweet
+                    if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
+                        for ref in tweet.referenced_tweets:
+                            if ref.type == 'retweeted':
+                                try:
+                                    original_tweet = client.get_tweet(ref.id, expansions=['author_id'])
+                                    if (original_tweet.data and 
+                                        original_tweet.includes and 
+                                        'users' in original_tweet.includes and 
+                                        len(original_tweet.includes['users']) > 0):
+                                        
+                                        original_author = original_tweet.includes['users'][0]
+                                        # ตรวจสอบให้แม่นยำทั้ง username และ user_id
+                                        if (original_author.username.lower() == self.target_username.lower() or
+                                            (self.cached_user_id and str(original_author.id) == str(self.cached_user_id))):
+                                            logger.warning(f"🚫 CONFIRMED self-retweet (modern API): {tweet.id} (original by @{original_author.username})")
+                                            return True, 'self_retweet', original_author.username
+                                        else:
+                                            logger.info(f"✅ Modern retweet of OTHER user: @{original_author.username}")
+                                            return False, 'other_retweet', original_author.username
+                                except Exception as e:
+                                    logger.warning(f"Error checking modern retweet {tweet.id}: {e}")
+                                    # ถ้าเช็คไม่ได้ให้ถือว่าเป็น self-retweet เพื่อความปลอดภัย
+                                    logger.warning(f"🚫 SAFETY BLOCK - cannot verify retweet author: {tweet.id}")
+                                    return True, 'self_retweet_safety_block', 'unknown'
+    
+            # ============= PRIORITY 1: ตรวจสอบ Self-Mention =============
             has_self_mention = False
             other_mentions = []
             
@@ -655,57 +691,8 @@ class XTelegramBot:
                             
                 except Exception as e:
                     logger.warning(f"Error checking mentions in {tweet.id}: {e}")
-            
-            # ============= PRIORITY 2: ตรวจสอบ Retweet - เพิ่มความแม่นยำ =============
-            if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
-                for ref in tweet.referenced_tweets:
-                    if ref.type == 'retweeted':
-                        try:
-                            original_tweet = client.get_tweet(ref.id, expansions=['author_id'])
-                            if (original_tweet.data and 
-                                original_tweet.includes and 
-                                'users' in original_tweet.includes and 
-                                len(original_tweet.includes['users']) > 0):
-                                
-                                original_author = original_tweet.includes['users'][0]
-                                # ตรวจสอบให้แม่นยำทั้ง username และ user_id
-                                if (original_author.username.lower() == self.target_username.lower() or
-                                    (self.cached_user_id and str(original_author.id) == str(self.cached_user_id))):
-                                    logger.info(f"🚫 Self-retweet detected: {tweet.id} (original by @{original_author.username})")
-                                    return True, 'self_retweet', original_author.username
-                                else:
-                                    logger.info(f"❌ Retweet of other user: @{original_author.username}")
-                                    return False, 'other_retweet', original_author.username
-                        except Exception as e:
-                            logger.warning(f"Error checking retweet {tweet.id}: {e}")
-                            continue
-            
-            # ตรวจสอบ RT format ใน text (legacy retweets) - เพิ่มความแม่นยำ
-            if tweet.text.startswith('RT @'):
-                try:
-                    # แยก username จาก RT format อย่างละเอียด
-                    rt_match = re.match(r'RT @(\w+):', tweet.text)
-                    if rt_match:
-                        rt_username = rt_match.group(1).lower()
-                        if rt_username == self.target_username.lower():
-                            logger.info(f"🚫 Self-RT (legacy format) detected: {tweet.id}")
-                            return True, 'self_retweet_legacy', rt_username
-                        else:
-                            logger.info(f"❌ RT of other user (legacy): @{rt_username}")
-                            return False, 'other_retweet_legacy', rt_username
-                    else:
-                        # ถ้าไม่ตรงรูปแบบ RT @username: ให้พยายามแยกด้วยวิธีเดิม
-                        rt_username = tweet.text.split('RT @')[1].split(':')[0].split(' ')[0].lower()
-                        if rt_username == self.target_username.lower():
-                            logger.info(f"🚫 Self-RT (legacy format fallback) detected: {tweet.id}")
-                            return True, 'self_retweet_legacy', rt_username
-                        else:
-                            logger.info(f"❌ RT of other user (legacy fallback): @{rt_username}")
-                            return False, 'other_retweet_legacy', rt_username
-                except Exception as e:
-                    logger.warning(f"Error parsing legacy RT {tweet.id}: {e}")
-            
-            # ============= PRIORITY 3: ตรวจสอบ Reply =============
+
+            # ============= PRIORITY 2: ตรวจสอบ Reply =============
             if hasattr(tweet, 'in_reply_to_user_id') and tweet.in_reply_to_user_id:
                 try:
                     replied_user = client.get_user(id=tweet.in_reply_to_user_id)
@@ -810,6 +797,37 @@ class XTelegramBot:
             
         except Exception as e:
             logger.warning(f"Error checking mentions: {e}")
+            return False
+
+    def is_self_retweet_comprehensive(self, tweet) -> bool:
+        """ตรวจสอบ self-retweet แบบครอบคลุม"""
+        try:
+            text = tweet.text.lower().strip()
+            target_lower = self.target_username.lower()
+            
+            # รูปแบบต่างๆ ของ RT
+            rt_patterns = [
+                f"rt @{target_lower}:",
+                f"rt @{target_lower} ",
+                f"retweet @{target_lower}:",
+                f"retweet @{target_lower} ",
+            ]
+            
+            for pattern in rt_patterns:
+                if text.startswith(pattern):
+                    logger.info(f"🚫 Self-RT pattern detected: {pattern}")
+                    return True
+                    
+            # ตรวจสอบใน referenced_tweets
+            if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
+                for ref in tweet.referenced_tweets:
+                    if ref.type == 'retweeted':
+                        return True  # ส่งไปตรวจต่อใน is_self_interaction
+                        
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error in comprehensive RT check: {e}")
             return False
     
     async def is_self_mention_or_retweet(self, tweet, client, account_id):
@@ -1510,8 +1528,8 @@ class XTelegramBot:
                     # ✅ เข้มงวดขึ้น - อนุญาตเฉพาะ self-interaction และ normal tweet เท่านั้น
                     if is_self:
                         # ❌ บล็อก self-retweet ทั้งหมด
-                        if interaction_type in ['self_retweet', 'self_retweet_legacy']:
-                            logger.info(f"❌ Blocking self-retweet: {tweet.id}")
+                        if interaction_type in ['self_retweet', 'self_retweet_legacy', 'self_retweet_safety_block']:
+                            logger.warning(f"❌ Blocking self-retweet in fetch_tweets: {tweet.id} ({interaction_type})")
                             skipped_reasons['other_interaction'] += 1
                             continue  # ข้าม - ไม่เอาใน Telegram
     
@@ -1632,7 +1650,19 @@ class XTelegramBot:
                 
                 is_self, interaction_type, target = await self.is_self_interaction(tweet, temp_client, account_id)
                 logger.info(f"Tweet {tweet.id}: is_self={is_self}, type={interaction_type}, target={target}")
-                
+
+                # 🔥 เพิ่มการบล็อก self-retweet ที่นี่ด้วย (Double-check)
+                if interaction_type in ['self_retweet', 'self_retweet_legacy', 'self_retweet_safety_block']:
+                    logger.warning(f"🚫 BLOCKED SELF-RETWEET in process_tweet: {tweet.id} ({interaction_type})")
+                    content_hash = self.generate_content_hash(original_text)
+                    tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
+                    self.save_processed_tweet(
+                        tweet.id, original_text, f"[SELF-RETWEET-BLOCKED-{interaction_type.upper()}]", 
+                        tweet.created_at, tweet_url, account_id, content_hash, 
+                        tweet.conversation_id, False
+                    )
+                    return True  # ถือว่าประมวลผลแล้ว แต่ไม่ส่ง
+            
                 # ขยายเนื้อหาถ้าจำเป็น
                 content = original_text
                 was_expanded = False
