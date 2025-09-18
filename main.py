@@ -716,16 +716,11 @@ class XTelegramBot:
     
     
     def format_message_by_interaction_type(self, tweet, translated_content, thai_time, tweet_url, interaction_type, target_info):
-        """จัดรูปแบบข้อความตามประเภท interaction - แก้ไขการแสดงผล truncated"""
+        """จัดรูปแบบข้อความตามประเภท interaction - แก้ไขการแสดงผล truncated ให้แม่นยำ"""
     
-        # ✅ แก้ไข: ตรวจสอบ truncated จาก original text ของ tweet
+        # ใช้ฟังก์ชันที่แก้ไขแล้วในการตรวจสอบ truncation
         original_text = getattr(tweet, 'text', '')
         is_truncated = self.is_truncated_tweet(original_text)
-        
-        # สร้างส่วนแจ้งเตือน truncated
-        # truncated_note = ""
-        # if is_truncated:
-        #     truncated_note = f"\n\n🔗 <b>ข้อความยาวเกิน</b> - <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
         
         # จัดรูปแบบตาม interaction type
         if interaction_type == 'self_mention_pure':
@@ -746,17 +741,15 @@ class XTelegramBot:
         else:
             # Normal tweet หรือกรณีอื่นๆ
             base_message = f"𝕏 @{self.target_username}\n\n{translated_content}"
-        
-        # รวมข้อความทั้งหมด - ใช้ลิงก์เดียว
+    
+        # แสดงข้อความเตือนเฉพาะเมื่อตรวจพบการ truncate จริงๆ เท่านั้น
         if is_truncated:
             full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>อ่านเต็มที่ X</a>"
+            logger.info(f"📏 Showing truncation notice for tweet {tweet.id} (original length: {len(original_text)})")
         else:
             full_message = f"{base_message}\n\n⏰ {thai_time} | 𝕏 <a href='{tweet_url}'>ที่มา</a>"
-    
-        # Log เพื่อ debug
-        if is_truncated:
-            logger.info(f"📏 Detected truncated tweet {tweet.id} (original length: {len(original_text)})")
-    
+            logger.debug(f"📄 Normal message format for tweet {tweet.id}")
+        
         return full_message
     
     def is_reply_tweet(self, tweet) -> bool:
@@ -949,35 +942,68 @@ class XTelegramBot:
             logger.error(f"Save tweet error: {e}")
 
     def is_truncated_tweet(self, text: str) -> bool:
-        """ตรวจสอบว่า tweet ถูกตัดหรือไม่ - แก้ไขให้แม่นยำขึ้น"""
-        # ตรวจสอบสัญญาณที่ชัดเจนของการถูกตัด
-        definite_truncation_signs = [
-            text.rstrip().endswith("…"),
-            text.rstrip().endswith("..."),
-            text.rstrip().endswith("…\n"),
-            text.rstrip().endswith("...\n"),
-            "Show this thread" in text,
-            "Show more" in text,
-            "Read more" in text,
-            text.rstrip().endswith("…\nhttps://t.co/"),  # Twitter ใส่ link หลัง …
-            "t.co/" in text and text.rstrip().endswith("…")  # Link + ellipsis
-        ]
-        
-        # ตรวจสอบความยาวที่น่าสงสัย (ใกล้ 295 ตัวอักษร)
-        suspicious_length = len(text) >= 295 and any([
-            text.rstrip().endswith("…"),
-            text.rstrip().endswith("..."),
-            not text.rstrip().endswith("."),  # ไม่จบด้วยจุด
-            not text.rstrip().endswith("!"),  # ไม่จบด้วยอัศเจรีย์
-            not text.rstrip().endswith("?")   # ไม่จบด้วยคำถาม
-        ])
-    
-        result = any(definite_truncation_signs) or suspicious_length
-        
-        if result:
-            logger.info(f"🔍 Detected truncated tweet (length: {len(text)}): '{text[-50:] if len(text) > 50 else text}'")
-        
-        return result
+        """ตรวจสอบว่า tweet ถูกตัดหรือไม่ - แก้ไขให้แม่นยำและไม่ false positive"""
+        try:
+            # ลบ whitespace และ newlines ออกเพื่อตรวจสอบ
+            clean_text = text.strip()
+            
+            if not clean_text:
+                return False
+            
+            # ตรวจสอบสัญญาณที่ชัดเจนของการถูกตัด - ต้องเป็น True 100%
+            definite_truncation_signs = [
+                clean_text.endswith("…"),           # Twitter ellipsis
+                clean_text.endswith("..."),         # Manual ellipsis
+                "Show this thread" in text,         # Twitter thread indicator
+                "Show more" in text,                # Twitter show more
+                "Read more" in text                 # Generic read more
+            ]
+            
+            # ตรวจสอบ URL + ellipsis combination (Twitter specific)
+            has_url_ellipsis = (
+                clean_text.endswith("…") and "t.co/" in text
+            ) or (
+                clean_text.endswith("...") and "t.co/" in text
+            )
+            
+            # รวมการตรวจสอบที่ชัดเจน
+            has_definite_signs = any(definite_truncation_signs) or has_url_ellipsis
+            
+            if has_definite_signs:
+                logger.info(f"🔍 CONFIRMED truncated tweet (definite signs): '{clean_text[-50:]}'")
+                return True
+            
+            # เพิ่มการตรวจสอบความยาว - แต่เข้มงวดมากขึ้น
+            # Twitter limit คือ 280 ตัวอักษร แต่ API อาจส่งมาได้มากกว่า
+            suspicious_length_conditions = [
+                len(clean_text) >= 275,  # ใกล้ขีดจำกัด Twitter
+                not clean_text.endswith(('.', '!', '?', '"', "'", ')', ']', '}'))  # ไม่จบด้วยเครื่องหมายวรรคตอน
+            ]
+            
+            # ต้องเป็นไปตามเงื่อนไขทั้งหมดถึงจะถือว่า truncated
+            if all(suspicious_length_conditions):
+                # เช็คเพิ่มเติม - ถ้ามีคำที่ดูเหมือนถูกตัดตรงกลาง
+                words = clean_text.split()
+                if words:
+                    last_word = words[-1]
+                    # ตรวจสอบว่าคำสุดท้ายดูเหมือนถูกตัดหรือไม่
+                    seems_cut_off = (
+                        len(last_word) > 10 and  # คำยาวมาก
+                        not any(last_word.endswith(suffix) for suffix in ['.com', '.org', '.net', 'ing', 'ion', 'ed', 'er', 'ly', 'ty'])  # ไม่ใช่ URL หรือคำที่สมบูรณ์
+                    )
+                    
+                    if seems_cut_off:
+                        logger.info(f"🔍 SUSPECTED truncated tweet (length + incomplete word): '{clean_text[-50:]}'")
+                        return True
+            
+            # ถ้าผ่านการตรวจสอบทั้งหมด = ไม่ถูกตัด
+            logger.debug(f"✅ Tweet appears complete (length: {len(clean_text)})")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking truncation: {e}")
+            # เมื่อเกิดข้อผิดพลาด ให้ถือว่าไม่ถูกตัด (safe default)
+            return False
     
     async def get_note_tweet_content(self, client: tweepy.Client, tweet_id: str, account_id: str) -> Optional[str]:
         """ดึง full content - ปรับปรุงให้ handle truncated ได้ดีขึ้น"""
@@ -1002,11 +1028,13 @@ class XTelegramBot:
                 
                 # ถ้าไม่มี note_tweet ให้ใช้ text ปกติ
                 original_text = tweet.data.text
-                
-                # แต่แจ้งเตือนถ้า text ถูกตัด
+            
+                # ใช้ฟังก์ชันที่แก้ไขแล้วในการตรวจสอบ
                 if self.is_truncated_tweet(original_text):
                     logger.warning(f"⚠️ Tweet {tweet_id} appears truncated but no note_tweet available")
-                    logger.info(f"📝 Using truncated text: {len(original_text)} chars")
+                    logger.info(f"📝 Using potentially truncated text: {len(original_text)} chars")
+                else:
+                    logger.info(f"📝 Using complete text: {len(original_text)} chars")
                 
                 return original_text
             
@@ -1078,7 +1106,7 @@ class XTelegramBot:
                     # คำศัพท์การเงิน
                     "bull market", "bear market", "bullish", "bearish",
                     "market cap", "volume", "liquidity", "volatility", "FUD", "ATH", "ATL", "whale", "diamond hands",
-                    "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump", "Funding Rate", "Open Interest",
+                    "RSI", "MACD", "EMA", "SMA", "DeFi", "NFT", "DAO", "HODL", "FOMO", "pump", "dump", "Funding Rate", "Open Interest", "Market Maker",
                     "long position", "short position","long positions", "short positions", "leverage", "margin", "liquidation", "OG", "Peer to Peer", "Blockchain", "Onchain", "Offchain", "Stablecoin"
                     
                     # หน่วยและตัวเลข
@@ -1106,7 +1134,7 @@ class XTelegramBot:
                             3. ตัวเลข, เปอร์เซ็นต์, สกุลเงิน ให้เก็บเป็นภาษาอังกฤษ
                             4. คำศัพท์เทคนิคด้านคริปโตและการเงิน ให้เก็บเป็นภาษาอังกฤษ
                             5. ต้องรักษารูปแบบการเว้นบรรทัด (newline) และย่อหน้าให้เหมือนต้นฉบับ
-                            6. ห้ามแปล long positions,short positions,leverage,liquidation,OG
+                            6. ห้ามแปล long positions,short positions,leverage,liquidation,liquidity,OG
                             
                             === ตัวอย่าง ===
                             - "Bitcoin hits $50,000" → "Bitcoin แตะ $50,000"
@@ -1465,8 +1493,14 @@ class XTelegramBot:
                 
                     # ✅ เข้มงวดขึ้น - อนุญาตเฉพาะ self-interaction และ normal tweet เท่านั้น
                     if is_self:
-                        if interaction_type in ['self_mention_pure', 'self_mention_mixed', 'self_retweet', 
-                                             'self_retweet_legacy', 'self_reply']:
+                        # ❌ บล็อก self-retweet ทั้งหมด
+                        if interaction_type in ['self_retweet', 'self_retweet_legacy']:
+                            logger.info(f"❌ Blocking self-retweet: {tweet.id}")
+                            skipped_reasons['other_interaction'] += 1
+                            continue  # ข้าม - ไม่เอาใน Telegram
+    
+                        # ✅ อนุญาตเฉพาะ mention และ reply
+                        elif interaction_type in ['self_mention_pure', 'self_mention_mixed', 'self_reply']:
                             logger.info(f"✅ Self-interaction ({interaction_type}): {tweet.id}")
                             filtered_tweets.append(tweet)
                         else:
