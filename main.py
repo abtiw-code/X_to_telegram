@@ -1310,64 +1310,77 @@ class XTelegramBot:
             logger.error(f"Translation validation error: {e}")
             return True  # ให้ผ่านไปเมื่อเกิดข้อผิดพลาดในการตรวจสอบ
         
-    async def download_media(self, url: str) -> Optional[bytes]:
-        """Download media with improved timeout and validation"""
-        try:
-            timeout = aiohttp.ClientTimeout(total=60)
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'image/*,video/*,*/*;q=0.8'
-            }
-            
-            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        # ตรวจสอบขนาดไฟล์ก่อนดาวน์โหลด
-                        content_length = response.headers.get('content-length')
-                        if content_length and int(content_length) > 100 * 1024 * 1024:  # 100MB limit
-                            logger.warning(f"Media too large: {content_length} bytes")
-                            return None
-                        
-                        content = await response.read()
-                        if content and len(content) > 100:  # ต้องมีขนาดมากกว่า 100 bytes
-                            logger.info(f"✅ Downloaded media: {len(content)} bytes from {url}")
-                            return content
+    async def download_media(self, url: str, max_retries: int = 3) -> Optional[bytes]:
+        """Download media with improved timeout and retry logic"""
+        for attempt in range(max_retries):
+            try:
+                # Progressive timeout - start shorter, increase with retries
+                timeout_seconds = 30 + (attempt * 15)  # 30s, 45s, 60s
+                timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'image/*,video/*,*/*;q=0.8'
+                }
+                
+                async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            # Check content length before downloading
+                            content_length = response.headers.get('content-length')
+                            if content_length and int(content_length) > 50 * 1024 * 1024:  # 50MB limit
+                                logger.warning(f"Media too large: {content_length} bytes")
+                                return None
+                            
+                            # Download with progress tracking
+                            content = await response.read()
+                            if content and len(content) > 100:
+                                logger.info(f"✅ Downloaded media: {len(content)} bytes from {url} (attempt {attempt + 1})")
+                                return content
+                            else:
+                                logger.warning(f"Media too small or empty: {len(content) if content else 0} bytes")
                         else:
-                            logger.warning(f"Media too small or empty: {len(content) if content else 0} bytes")
-                    else:
-                        logger.warning(f"HTTP {response.status} for media URL: {url}")
-        
-        except asyncio.TimeoutError:
-            logger.warning(f"Media download timeout: {url}")
-        except Exception as e:
-            logger.error(f"Media download error for {url}: {e}")
+                            logger.warning(f"HTTP {response.status} for media URL: {url}")
+            
+            except asyncio.TimeoutError:
+                logger.warning(f"Media download timeout (attempt {attempt + 1}/{max_retries}): {url}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+            except Exception as e:
+                logger.error(f"Media download error (attempt {attempt + 1}/{max_retries}) for {url}: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
         
         return None
     
     async def send_telegram_message(self, content: str, media_urls: List[str] = None, tweet_id: str = None):
-        """Send message to Telegram - ป้องกันข้อความซ้ำ 100%"""
+        """Send message to Telegram with improved timeout handling and fallbacks"""
         try:
-            # ตรวจสอบข้อความซ้ำก่อนส่ง
+            # Check for duplicate messages
             message_hash = self.generate_message_hash(content, media_urls, tweet_id)
             
             if message_hash in self.sent_message_hashes:
                 logger.warning(f"Duplicate message detected for tweet {tweet_id}, skipping send")
                 return True
             
-            # จำกัดขนาด cache
+            # Limit cache size
             if len(self.sent_message_hashes) > self.max_sent_cache:
                 self.sent_message_hashes = set(list(self.sent_message_hashes)[-50:])
             
             success = False
             
-            # ถ้ามี media
+            # Handle media if present
             if media_urls and len(media_urls) > 0:
                 logger.info(f"Processing {len(media_urls)} media URLs for tweet {tweet_id}")
                 media_files = []
+                failed_media = 0
                 
-                for i, url in enumerate(media_urls[:5]):
+                for i, url in enumerate(media_urls[:4]):  # Limit to 4 media files
                     try:
-                        media_data = await self.download_media(url)
+                        logger.info(f"Downloading media {i+1}/{len(media_urls)}: {url}")
+                        media_data = await self.download_media(url, max_retries=2)  # Reduce retries for faster processing
+                        
                         if media_data:
                             caption = content[:1024] if i == 0 else None
                             
@@ -1385,62 +1398,112 @@ class XTelegramBot:
                                 ))
                             
                             logger.info(f"Successfully processed media {i+1}/{len(media_urls)}")
-                        
+                        else:
+                            failed_media += 1
+                            logger.warning(f"Failed to download media {i+1}: {url}")
+                    
                     except Exception as media_error:
+                        failed_media += 1
                         logger.error(f"Error processing media {url}: {media_error}")
                         continue
                     
-                    await asyncio.sleep(1)
+                    # Small delay between downloads
+                    await asyncio.sleep(0.5)
                 
-                # ส่ง media group ถ้ามีไฟล์
+                # Send media group with improved error handling
                 if media_files:
-                    try:
-                        await self.telegram_bot.send_media_group(
-                            chat_id=self.telegram_chat_id,
-                            media=media_files
-                        )
-                        logger.info(f"Successfully sent media group with {len(media_files)} items for tweet {tweet_id}")
-                        success = True
-                        # เพิ่ม hash เมื่อส่งสำเร็จ
-                        self.sent_message_hashes.add(message_hash)
-                        return True  # return ทันที
-                        
-                    except Exception as media_group_error:
-                        logger.error(f"Failed to send media group: {media_group_error}")
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            # Set longer timeout for media group
+                            await asyncio.wait_for(
+                                self.telegram_bot.send_media_group(
+                                    chat_id=self.telegram_chat_id,
+                                    media=media_files
+                                ),
+                                timeout=120  # 2 minutes timeout
+                            )
+                            logger.info(f"Successfully sent media group with {len(media_files)} items for tweet {tweet_id}")
+                            success = True
+                            self.sent_message_hashes.add(message_hash)
+                            return True
+                            
+                        except asyncio.TimeoutError:
+                            logger.warning(f"Media group send timeout (attempt {attempt + 1}/{max_retries})")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(5 * (attempt + 1))  # Progressive delay
+                                continue
+                            else:
+                                logger.error(f"All media group send attempts timed out for tweet {tweet_id}")
+                                break
+                                
+                        except Exception as media_group_error:
+                            logger.error(f"Media group send error (attempt {attempt + 1}): {media_group_error}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(3 * (attempt + 1))
+                                continue
+                            else:
+                                break
+                
+                # If media completely failed, inform about it in the text message
+                if failed_media > 0 and not media_files:
+                    content += f"\n\n⚠️ ไม่สามารถโหลดรูปภาพได้ ({failed_media} ไฟล์)"
             
-            # ส่งข้อความธรรมดา (เฉพาะเมื่อไม่มี media หรือ media ส่งไม่สำเร็จ)
+            # Send text message (either as fallback or primary)
             if not success:
-                try:
-                    await self.telegram_bot.send_message(
-                        chat_id=self.telegram_chat_id,
-                        text=content[:4096],
-                        parse_mode='HTML',
-                        disable_web_page_preview=True
-                    )
-                    logger.info(f"Successfully sent text message for tweet {tweet_id}")
-                    success = True
-                    
-                except TelegramError as telegram_error:
-                    logger.error(f"Telegram API error: {telegram_error}")
-                
+                max_retries = 3
+                for attempt in range(max_retries):
                     try:
-                        await self.telegram_bot.send_message(
-                            chat_id=self.telegram_chat_id,
-                            text=content[:4096],
-                            disable_web_page_preview=True
+                        # Set timeout for text message
+                        await asyncio.wait_for(
+                            self.telegram_bot.send_message(
+                                chat_id=self.telegram_chat_id,
+                                text=content[:4096],
+                                parse_mode='HTML',
+                                disable_web_page_preview=True
+                            ),
+                            timeout=30  # 30 seconds timeout
                         )
-                        logger.info(f"Successfully sent fallback text message for tweet {tweet_id}")
+                        logger.info(f"Successfully sent text message for tweet {tweet_id}")
                         success = True
+                        break
                         
-                    except Exception as final_error:
-                        logger.error(f"All message send attempts failed: {final_error}")
-                        return False
-                
-                except Exception as general_error:
-                    logger.error(f"General error sending message: {general_error}")
-                    return False
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Text message timeout (attempt {attempt + 1}/{max_retries})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2 * (attempt + 1))
+                            continue
+                            
+                    except TelegramError as telegram_error:
+                        logger.error(f"Telegram API error (attempt {attempt + 1}): {telegram_error}")
+                        
+                        # Try fallback without HTML parsing
+                        try:
+                            await asyncio.wait_for(
+                                self.telegram_bot.send_message(
+                                    chat_id=self.telegram_chat_id,
+                                    text=content[:4096],
+                                    disable_web_page_preview=True
+                                ),
+                                timeout=30
+                            )
+                            logger.info(f"Successfully sent fallback text message for tweet {tweet_id}")
+                            success = True
+                            break
+                            
+                        except Exception as final_error:
+                            logger.error(f"Fallback message failed: {final_error}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(3 * (attempt + 1))
+                                continue
+                    
+                    except Exception as general_error:
+                        logger.error(f"General error sending message (attempt {attempt + 1}): {general_error}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2 * (attempt + 1))
+                            continue
             
-            # เพิ่ม hash เมื่อส่งสำเร็จ
+            # Add to sent cache if successful
             if success:
                 self.sent_message_hashes.add(message_hash)
         
