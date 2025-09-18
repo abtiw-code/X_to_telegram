@@ -627,6 +627,11 @@ class XTelegramBot:
     async def is_self_interaction(self, tweet, client, account_id) -> tuple:
         """ตรวจสอบว่าเป็นการโต้ตอบกับตัวเองหรือไม่ - ปรับปรุงแล้ว"""
         try:
+            # ============= PRIORITY 0: ตรวจสอบ Self-RT จาก text pattern ก่อน =============
+            if self.detect_self_retweet_text_pattern(tweet):
+                logger.warning(f"🚫 BLOCKED Self-RT (text pattern): {tweet.id}")
+                return True, 'self_retweet_text_pattern', self.target_username
+            
             # ============= PRIORITY 0: ตรวจสอบ Self-Retweet ก่อนทุกอย่าง =============
             is_rt, rt_type = self.is_self_retweet_comprehensive(tweet)
             
@@ -799,6 +804,31 @@ class XTelegramBot:
             logger.warning(f"Error checking mentions: {e}")
             return False
 
+    def detect_self_retweet_text_pattern(self, tweet) -> bool:
+        """ตรวจสอบ self-retweet จาก text pattern อย่างเดียว"""
+        try:
+            text = tweet.text.lower().strip()
+            target_lower = self.target_username.lower()
+            
+            # รูปแบบต่างๆ ของ RT ตัวเอง
+            self_rt_patterns = [
+                f"rt @{target_lower}:",
+                f"rt @{target_lower} ",
+                f"retweet @{target_lower}:",
+                f"retweet @{target_lower} ",
+            ]
+            
+            for pattern in self_rt_patterns:
+                if text.startswith(pattern):
+                    logger.warning(f"🚫 Self-RT text pattern detected: '{pattern}' in tweet {tweet.id}")
+                    return True
+                
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error in text pattern RT check: {e}")
+            return False
+    
     def is_self_retweet_comprehensive(self, tweet) -> bool:
         """ตรวจสอบ self-retweet แบบครอบคลุม"""
         try:
@@ -1528,7 +1558,7 @@ class XTelegramBot:
                     # ✅ เข้มงวดขึ้น - อนุญาตเฉพาะ self-interaction และ normal tweet เท่านั้น
                     if is_self:
                         # ❌ บล็อก self-retweet ทั้งหมด
-                        if interaction_type in ['self_retweet', 'self_retweet_legacy', 'self_retweet_safety_block']:
+                        if interaction_type in ['self_retweet', 'self_retweet_legacy', 'self_retweet_text_pattern', 'self_retweet_api', 'self_retweet_safety_block']:
                             logger.warning(f"❌ Blocking self-retweet in fetch_tweets: {tweet.id} ({interaction_type})")
                             skipped_reasons['other_interaction'] += 1
                             continue  # ข้าม - ไม่เอาใน Telegram
@@ -1652,7 +1682,7 @@ class XTelegramBot:
                 logger.info(f"Tweet {tweet.id}: is_self={is_self}, type={interaction_type}, target={target}")
 
                 # 🔥 เพิ่มการบล็อก self-retweet ที่นี่ด้วย (Double-check)
-                if interaction_type in ['self_retweet', 'self_retweet_legacy', 'self_retweet_safety_block']:
+                if interaction_type in ['self_retweet', 'self_retweet_legacy', 'self_retweet_text_pattern', 'self_retweet_api', 'self_retweet_safety_block']:
                     logger.warning(f"🚫 BLOCKED SELF-RETWEET in process_tweet: {tweet.id} ({interaction_type})")
                     content_hash = self.generate_content_hash(original_text)
                     tweet_url = f"https://twitter.com/{self.target_username}/status/{tweet.id}"
