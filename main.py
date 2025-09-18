@@ -656,7 +656,7 @@ class XTelegramBot:
                 except Exception as e:
                     logger.warning(f"Error checking mentions in {tweet.id}: {e}")
             
-            # ============= PRIORITY 2: ตรวจสอบ Retweet =============
+            # ============= PRIORITY 2: ตรวจสอบ Retweet - เพิ่มความแม่นยำ =============
             if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
                 for ref in tweet.referenced_tweets:
                     if ref.type == 'retweeted':
@@ -668,26 +668,40 @@ class XTelegramBot:
                                 len(original_tweet.includes['users']) > 0):
                                 
                                 original_author = original_tweet.includes['users'][0]
-                                if original_author.username.lower() == self.target_username.lower():
-                                    logger.info(f"✅ Self-retweet detected: {tweet.id}")
+                                # ตรวจสอบให้แม่นยำทั้ง username และ user_id
+                                if (original_author.username.lower() == self.target_username.lower() or
+                                    (self.cached_user_id and str(original_author.id) == str(self.cached_user_id))):
+                                    logger.info(f"🚫 Self-retweet detected: {tweet.id} (original by @{original_author.username})")
                                     return True, 'self_retweet', original_author.username
                                 else:
-                                    logger.info(f"❌ Retweet of other user: {original_author.username}")
+                                    logger.info(f"❌ Retweet of other user: @{original_author.username}")
                                     return False, 'other_retweet', original_author.username
                         except Exception as e:
                             logger.warning(f"Error checking retweet {tweet.id}: {e}")
                             continue
             
-            # ตรวจสอบ RT format ใน text (legacy retweets)
+            # ตรวจสอบ RT format ใน text (legacy retweets) - เพิ่มความแม่นยำ
             if tweet.text.startswith('RT @'):
                 try:
-                    rt_username = tweet.text.split('RT @')[1].split(':')[0].split(' ')[0].lower()
-                    if rt_username == self.target_username.lower():
-                        logger.info(f"✅ Self-RT (legacy format) detected: {tweet.id}")
-                        return True, 'self_retweet_legacy', rt_username
+                    # แยก username จาก RT format อย่างละเอียด
+                    rt_match = re.match(r'RT @(\w+):', tweet.text)
+                    if rt_match:
+                        rt_username = rt_match.group(1).lower()
+                        if rt_username == self.target_username.lower():
+                            logger.info(f"🚫 Self-RT (legacy format) detected: {tweet.id}")
+                            return True, 'self_retweet_legacy', rt_username
+                        else:
+                            logger.info(f"❌ RT of other user (legacy): @{rt_username}")
+                            return False, 'other_retweet_legacy', rt_username
                     else:
-                        logger.info(f"❌ RT of other user (legacy): {rt_username}")
-                        return False, 'other_retweet_legacy', rt_username
+                        # ถ้าไม่ตรงรูปแบบ RT @username: ให้พยายามแยกด้วยวิธีเดิม
+                        rt_username = tweet.text.split('RT @')[1].split(':')[0].split(' ')[0].lower()
+                        if rt_username == self.target_username.lower():
+                            logger.info(f"🚫 Self-RT (legacy format fallback) detected: {tweet.id}")
+                            return True, 'self_retweet_legacy', rt_username
+                        else:
+                            logger.info(f"❌ RT of other user (legacy fallback): @{rt_username}")
+                            return False, 'other_retweet_legacy', rt_username
                 except Exception as e:
                     logger.warning(f"Error parsing legacy RT {tweet.id}: {e}")
             
@@ -696,11 +710,13 @@ class XTelegramBot:
                 try:
                     replied_user = client.get_user(id=tweet.in_reply_to_user_id)
                     if replied_user.data:
-                        if replied_user.data.username.lower() == self.target_username.lower():
+                        # ตรวจสอบให้แม่นยำทั้ง username และ user_id
+                        if (replied_user.data.username.lower() == self.target_username.lower() or
+                            (self.cached_user_id and str(tweet.in_reply_to_user_id) == str(self.cached_user_id))):
                             logger.info(f"✅ Self-reply detected: {tweet.id}")
                             return True, 'self_reply', replied_user.data.username
                         else:
-                            logger.info(f"❌ Reply to other user: {replied_user.data.username}")
+                            logger.info(f"❌ Reply to other user: @{replied_user.data.username}")
                             return False, 'other_reply', replied_user.data.username
                 except Exception as e:
                     logger.warning(f"Error checking reply target {tweet.id}: {e}")
