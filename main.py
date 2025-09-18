@@ -829,8 +829,8 @@ class XTelegramBot:
             logger.error(f"Error in text pattern RT check: {e}")
             return False
     
-    def is_self_retweet_comprehensive(self, tweet) -> bool:
-        """ตรวจสอบ self-retweet แบบครอบคลุม"""
+    def is_self_retweet_comprehensive(self, tweet) -> tuple:
+        """ตรวจสอบ self-retweet แบบครอบคลุม - แก้ไข: return tuple"""
         try:
             text = tweet.text.lower().strip()
             target_lower = self.target_username.lower()
@@ -846,19 +846,19 @@ class XTelegramBot:
             for pattern in rt_patterns:
                 if text.startswith(pattern):
                     logger.info(f"🚫 Self-RT pattern detected: {pattern}")
-                    return True
+                    return True, 'self_retweet_legacy_comprehensive'
                     
             # ตรวจสอบใน referenced_tweets
             if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
                 for ref in tweet.referenced_tweets:
                     if ref.type == 'retweeted':
-                        return True  # ส่งไปตรวจต่อใน is_self_interaction
+                        return True, 'self_retweet_modern_need_check'  # ส่งไปตรวจต่อใน is_self_interaction
                         
-            return False
-            
+            return False, 'not_retweet'
+        
         except Exception as e:
             logger.error(f"Error in comprehensive RT check: {e}")
-            return False
+            return False, 'error'
     
     async def is_self_mention_or_retweet(self, tweet, client, account_id):
         """ตรวจสอบว่าเป็นการ mention หรือ retweet ตัวเองหรือไม่"""
