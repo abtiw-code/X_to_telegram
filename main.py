@@ -521,6 +521,8 @@ class XTelegramBot:
                 "Register here",
                 "Sign Up Here",
                 "Get $1,000 today",
+                "sfx",
+                "simplefxcom",
                 "0% spot fees"
             ]
             
