@@ -484,6 +484,7 @@ class XTelegramBot:
             blocked_phrases = [
                 "Register for Arkham. One account gives you:",  
                 "Signup",
+                "Sign up",
                 "auth.arkm.com/register",
                 "From cryptoquant.com",
                 "whop.com/alicharts/",
