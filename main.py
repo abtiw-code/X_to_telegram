@@ -483,7 +483,7 @@ class XTelegramBot:
             # 🔥 แก้ไขหลัก 5: เพิ่มการ log ทุกการตรวจสอบ
             blocked_phrases = [
                 "Register for Arkham. One account gives you:",  
-                "$100 Signup Bonus",
+                "Signup",
                 "auth.arkm.com/register",
                 "From cryptoquant.com",
                 "whop.com/alicharts/",
@@ -520,11 +520,12 @@ class XTelegramBot:
                 "7-day trial",
                 "7-day FREE",
                 "Register here",
-                "Sign Up Here",
-                "Sign up today",
+                "Enjoy and Subscribe",
+                "Check it out here",
                 "Get $1,000 today",
                 "sfx",
                 "simplefxcom",
+                "Join for free here",
                 "0% spot fees"
             ]
             
@@ -1182,7 +1183,7 @@ class XTelegramBot:
                     "k", "M", "B", "T", "%", "$", "€", "£", "¥", "₹", "₿", "฿",
     
                     # Technical terms
-                    "API", "DApp", "smart contract", "blockchain", "hash rate",
+                    "API", "DApp", "smart contract", "blockchain", "hash rate", "Unstake",
                     "mining", "staking", "yield farming", "liquidity pool"
                     
                 ]
